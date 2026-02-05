@@ -1,0 +1,25 @@
+# Start of .gitignore
+
+# Ignore all temp files in the root directory
+*.o
+*.log
+*.dat
+*.out
+*.txt
+*.csv
+main
+
+# Ignore all files in the raw directory and itself
+/raw/*
+
+# Ignore all files in the processing directory but not python files
+/script/processing/*
+!/script/processing/*.py
+
+# Ignore DS_Store files
+.DS_Store
+
+# Ingore VSCode settings
+.vscode/
+
+# End of .gitignore

@@ -1,0 +1,186 @@
+{
+    "q_0_latency": {
+        "latency": 10.0
+    },
+    "q_1_latency": {
+        "latency": 10.0
+    },
+    "k_0_latency": {
+        "latency": 10.0
+    },
+    "k_1_latency": {
+        "latency": 10.0
+    },
+    "p_latency": {
+        "latency": 10.0
+    },
+    "s_latency": {
+        "latency": 10.0
+    },
+    "v_0_latency": {
+        "latency": 10.0
+    },
+    "v_1_latency": {
+        "latency": 10.0
+    },
+    "a_latency": {
+        "latency": 10.0
+    },
+    "o_0_latency": {
+        "latency": 10.0
+    },
+    "o_1_latency": {
+        "latency": 10.0
+    },
+    "g_0_latency": {
+        "latency": 10.0
+    },
+    "g_1_latency": {
+        "latency": 10.0
+    },
+    "u_0_latency": {
+        "latency": 10.0
+    },
+    "u_1_latency": {
+        "latency": 10.0
+    },
+    "output_latency": {
+        "latency": 10.0
+    },
+    "load_k_latency": {
+        "latency": 10.0
+    },
+    "load_v_latency": {
+        "latency": 10.0
+    },
+    "tmp_lora_latency": {
+        "latency": 10.0
+    },
+    
+    "q_req": {
+        "rc_req": [
+            [
+                0,
+                0,
+                25165824,
+                64
+            ]
+        ],
+        "r_req": [
+            [
+                0,
+                0,
+                16777216,
+                64
+            ]
+        ]
+    },
+    "k_req": {
+        "rc_req": [
+            [
+                0,
+                0,
+                25165824,
+                64
+            ]
+        ],
+        "r_req": [
+            [
+                0,
+                0,
+                16777216,
+                64
+            ]
+        ]
+    },
+    "v_req": {
+        "rc_req": [
+            [
+                0,
+                0,
+                25165824,
+                64
+            ]
+        ],
+        "r_req": [
+            [
+                0,
+                0,
+                16777216,
+                64
+            ]
+        ]
+    },
+    "o_req": {
+        "rc_req": [
+            [
+                0,
+                0,
+                25165824,
+                64
+            ]
+        ],
+        "r_req": [
+            [
+                0,
+                0,
+                16777216,
+                64
+            ]
+        ]
+    },
+    "g_req": {
+        "rc_req": [
+            [
+                0,
+                0,
+                25165824,
+                64
+            ]
+        ],
+        "r_req": [
+            [
+                0,
+                0,
+                16777216,
+                64
+            ]
+        ]
+    },
+    "u_req": {
+        "rc_req": [
+            [
+                0,
+                0,
+                25165824,
+                64
+            ]
+        ],
+        "r_req": [
+            [
+                0,
+                0,
+                16777216,
+                64
+            ]
+        ]
+    },
+    "output_req": {
+        "rc_req": [
+            [
+                0,
+                0,
+                29360128,
+                64
+            ]
+        ],
+        "r_req": [
+            [
+                0,
+                0,
+                16777216,
+                64
+            ]
+        ]
+    }
+}
