@@ -1,71 +1,56 @@
 #ifndef READ_JSON_H
 #define READ_JSON_H
 
-// 定义 JsonData 结构体
+/*
+ * CLoRA per-step JSON schema (emitted by the Python strategy plugin,
+ * consumed by main.c).
+ *
+ * One JSON file == one decoder pass (all n_layers, all n_matrices fused).
+ * The C simulator translates each adapter entry into READ / READ_COMPUTE
+ * requests on the CXL link + an attention RC distributed across n_cxl, plus
+ * a single NPU_COMPUTE for the base-model GPU time.
+ *
+ *   {
+ *     "kind": "decode" | "prefill",
+ *     "model": { "d", "n_layers", "n_matrices", "s_dtype" },
+ *     "hw":    { "n_cxl" },
+ *     "input_tokens_per_request": int,
+ *     "base_model_compute_ns":    float,
+ *     "kv": { "kv_tokens_total", "kv_in_gpu_fraction" },
+ *     "adapters": [
+ *       { "id", "rank", "batch", "strategy" (1..4), "kv_tokens" }, ...
+ *     ]
+ *   }
+ *
+ * Sizes computed in the C side are in BYTES. Times in ns. cxl_bandwidth and
+ * dram_bandwidth read from the .conf file are in B/ns (== GB/s numerically).
+ */
+
 typedef struct {
-    
-    //npu request latency (Core)
-    //0为原本计算，1为带delta的lora计算
-    double q_0_latency;
-    double q_1_latency;
-    double k_0_latency;
-    double k_1_latency;
-    double p_latency;
-    double s_latency;
-    double v_0_latency;
-    double v_1_latency;
-    double a_latency;
-    double o_0_latency;
-    double o_1_latency;
-    double g_0_latency;
-    double g_1_latency;
-    double u_0_latency;
-    double u_1_latency;
-    double output_latency;
+    unsigned int id;
+    unsigned int rank;
+    unsigned int batch;
+    unsigned int strategy;   /* 1=E1, 2=E2, 3=E3, 4=E4 */
+    unsigned int kv_tokens;
+} AdapterDecision;
 
-    double load_k_latency;
-    double load_v_latency;
+typedef struct {
+    int          kind;                       /* 0 = decode, 1 = prefill */
+    unsigned int model_d;
+    unsigned int n_layers;
+    unsigned int n_matrices;
+    unsigned int s_dtype;                    /* bytes per FP element */
+    unsigned int n_cxl;
+    unsigned int input_tokens_per_request;
+    double       base_model_compute_ns;
+    unsigned int kv_tokens_total;
+    double       kv_in_gpu_fraction;
 
-    double tmp_lora_latency;//在py未接入的情况先tmp
-
-    double b1,b2,b3;//三种方案分别所占的比例
-
-    unsigned int input_token_num;//输入词数量
-
-    //ssd request 参数
-    unsigned int q_rc_req[5][10];
-    unsigned int q_r_req[5][10];
-    unsigned int k_rc_req[5][10];
-    unsigned int k_r_req[5][10];
-    unsigned int v_rc_req[5][10];
-    unsigned int v_r_req[5][10];
-    unsigned int o_rc_req[5][10];
-    unsigned int o_r_req[5][10];
-    unsigned int g_rc_req[5][10];
-    unsigned int g_r_req[5][10];
-    unsigned int u_rc_req[5][10];
-    unsigned int u_r_req[5][10];
-    unsigned int output_rc_req[5][10];
-    unsigned int output_r_req[5][10];
-
-    unsigned int q_rc_req_arrays;
-    unsigned int q_r_req_arrays;
-    unsigned int k_rc_req_arrays;
-    unsigned int k_r_req_arrays;
-    unsigned int v_rc_req_arrays;
-    unsigned int v_r_req_arrays;
-    unsigned int o_rc_req_arrays;
-    unsigned int o_r_req_arrays;
-    unsigned int g_rc_req_arrays;
-    unsigned int g_r_req_arrays;
-    unsigned int u_rc_req_arrays;
-    unsigned int u_r_req_arrays;
-    unsigned int output_rc_req_arrays;
-    unsigned int output_r_req_arrays;
-
+    unsigned int      n_adapters;
+    AdapterDecision  *adapters;              /* heap-allocated, length n_adapters */
 } JsonData;
 
-// 函数声明用于读取和解析 JSON 数据
-JsonData* readJsonData(const char *filename);
+JsonData *readJsonData(const char *filename);
+void      freeJsonData(JsonData *d);
 
 #endif /* READ_JSON_H */

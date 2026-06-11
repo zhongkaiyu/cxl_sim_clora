@@ -1,0 +1,11 @@
+{
+  "kind": "decode",
+  "model": { "d": 4096, "n_layers": 1, "n_matrices": 1, "s_dtype": 2 },
+  "hw":    { "n_cxl": 4 },
+  "input_tokens_per_request": 1,
+  "base_model_compute_ns":    0.0,
+  "kv":    { "kv_tokens_total": 400, "kv_in_gpu_fraction": 0.0 },
+  "adapters": [
+    { "id": 0, "rank": 16, "batch": 1, "strategy": 1, "kv_tokens": 400 }
+  ]
+}

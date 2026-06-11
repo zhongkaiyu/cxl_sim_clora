@@ -1346,7 +1346,8 @@ Status go_one_step_in_channel(struct cxl_switch_device_info * ssd, struct sub_re
                 sub->current_time=ssd->current_time;
                 sub->current_state=SR_CHANNEL_R_CA_TRANSFER;
                 sub->next_state=SR_CXLCTRL_R_CA_ANALYZE;
-                sub->next_state_predict_time=ssd->current_time + ssd->parameter->time_characteristics.tCMDCXL;
+                sub->next_state_predict_time=ssd->current_time + ssd->parameter->time_characteristics.tCMDCXL
+                    + ssd->parameter->time_characteristics.L_CXL_switch;
                 sub->begin_time=ssd->current_time;
 
                 ssd->bottom_channel_head[location->channel].cxl_device->chip_head[location->chip].subs_idx=sub->idx;
@@ -1386,8 +1387,9 @@ Status go_one_step_in_channel(struct cxl_switch_device_info * ssd, struct sub_re
                 for(int i = 0; i < sub->addr_num; i++) {
                     read_data_size += sub->p_addr[i]->size;
                 }
-                sub->next_state_predict_time=ssd->current_time + read_data_size / ssd->parameter->cxl_bandwidth;
-                if (sub->next_state_predict_time<=ssd->current_time){ 
+                sub->next_state_predict_time=ssd->current_time + read_data_size / ssd->parameter->cxl_bandwidth
+                    + ssd->parameter->time_characteristics.L_CXL_switch;
+                if (sub->next_state_predict_time<=ssd->current_time){
                     sub->next_state_predict_time = ssd->current_time + 1;
                 }
                 sub->complete_time=sub->next_state_predict_time;
@@ -1423,8 +1425,9 @@ Status go_one_step_in_channel(struct cxl_switch_device_info * ssd, struct sub_re
                 sub->current_time=ssd->current_time;
                 sub->current_state=SR_CHANNEL_RC_CA_TRANSFER;
                 sub->next_state=SR_CXLCTRL_RC_CA_ANALYZE;
-                sub->next_state_predict_time = ssd->current_time + ssd->parameter->time_characteristics.tCMDCXL + 
-                                            sub->input_size / ssd->parameter->cxl_bandwidth;
+                sub->next_state_predict_time = ssd->current_time + ssd->parameter->time_characteristics.tCMDCXL +
+                                            sub->input_size / ssd->parameter->cxl_bandwidth
+                                            + ssd->parameter->time_characteristics.L_CXL_switch;
                 if (sub->next_state_predict_time<=ssd->current_time){
                     sub->next_state_predict_time=ssd->current_time + 1;
                 }
@@ -1463,7 +1466,8 @@ Status go_one_step_in_channel(struct cxl_switch_device_info * ssd, struct sub_re
                 sub->current_time=ssd->current_time;
                 sub->current_state=SR_CHANNEL_RC_DATA_TRANSFER;
                 sub->next_state=SR_COMPLETE;
-                sub->next_state_predict_time = ssd->current_time + sub->output_size / ssd->parameter->cxl_bandwidth;
+                sub->next_state_predict_time = ssd->current_time + sub->output_size / ssd->parameter->cxl_bandwidth
+                    + ssd->parameter->time_characteristics.L_CXL_switch;
                 if (sub->next_state_predict_time <= ssd->current_time){
                     sub->next_state_predict_time = ssd->current_time + 1;
                 }
@@ -1505,7 +1509,9 @@ Status go_one_step_in_channel(struct cxl_switch_device_info * ssd, struct sub_re
                 for(int i = 0; i < sub->addr_num; i++) {
                     write_data_size += sub->p_addr[i]->size;
                 }
-                sub->next_state_predict_time=ssd->current_time + ssd->parameter->time_characteristics.tCMDCXL + write_data_size / ssd->parameter->cxl_bandwidth;
+                sub->next_state_predict_time=ssd->current_time + ssd->parameter->time_characteristics.tCMDCXL
+                    + write_data_size / ssd->parameter->cxl_bandwidth
+                    + ssd->parameter->time_characteristics.L_CXL_switch;
                 if (sub->next_state_predict_time<=ssd->current_time){
                     sub->next_state_predict_time=ssd->current_time+1;
                 }
@@ -1680,7 +1686,8 @@ Status go_one_step_in_cxlctrl(struct cxl_switch_device_info * ssd, struct sub_re
             sub->current_time=ssd->current_time;
             sub->current_state=SR_CXLCTRL_RC_CA_ANALYZE;
             sub->next_state=SR_CXLCTRL_RC_CA_TRANSFER;
-            sub->next_state_predict_time=ssd->current_time+ssd->parameter->time_characteristics.tANALYZE;
+            sub->next_state_predict_time=ssd->current_time+ssd->parameter->time_characteristics.tANALYZE
+                + ssd->parameter->time_characteristics.L_read_compute_cmd;
 
             ssd->bottom_channel_head[location->channel].cxl_device->chip_head[location->chip].cxlctrl->current_state=CC_ANALYZE;
             ssd->bottom_channel_head[location->channel].cxl_device->chip_head[location->chip].cxlctrl->current_time=ssd->current_time;
@@ -1782,11 +1789,12 @@ Status services_all_requests_using_channel(struct cxl_switch_device_info * ssd, 
     srand(time(NULL));
     
     // Array of function pointers
-    Status (*functions[])() = { services_read_from_wait_to_CATransfer_in_channel, 
-                                services_readCompute_from_wait_to_CATransfer_in_channel, 
-                                services_write_from_wait_to_dataAndCATransfer_in_channel,
-                                services_read_from_dataTransfer_to_dataTransfer_from_cxlctrl_to_channel,
-                                services_readCompute_from_dataTransfer_to_dataTransfer_from_cxlctrl_to_channel};
+    Status (*functions[])(struct cxl_switch_device_info *, unsigned int, unsigned int *, int *) = {
+        services_read_from_wait_to_CATransfer_in_channel,
+        services_readCompute_from_wait_to_CATransfer_in_channel,
+        services_write_from_wait_to_dataAndCATransfer_in_channel,
+        services_read_from_dataTransfer_to_dataTransfer_from_cxlctrl_to_channel,
+        services_readCompute_from_dataTransfer_to_dataTransfer_from_cxlctrl_to_channel};
     // int indices[] = {4, 1, 0, 2, 3};
     // int indices[] = {4, 0, 1, 2, 3};
     int indices[] = {0, 1, 2, 3, 4};
@@ -1805,9 +1813,10 @@ Status services_all_requests_using_channel(struct cxl_switch_device_info * ssd, 
 
     // Execute functions in random order
     for (size_t ii = 0; ii < n; ii++) {
-        functions[indices[ii]](ssd, channel, &channel_busy_flag, gpu_channel_states);
+        functions[indices[ii]](ssd, channel, channel_busy_flag, gpu_channel_states);
     }
 
+    return SUCCESS;
 }
 
 

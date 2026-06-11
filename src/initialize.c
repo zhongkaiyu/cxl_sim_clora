@@ -337,7 +337,7 @@ struct cxlctrl_info * initialize_cxlctrl(struct cxlctrl_info * p_cxlctrl, struct
     return p_cxlctrl;
 }
 
-struct cxlctrl_info * initialize_cxldram(struct cxldram_info * p_cxldram, struct parameter_value *parameter,long long current_time )
+struct cxldram_info * initialize_cxldram(struct cxldram_info * p_cxldram, struct parameter_value *parameter,long long current_time )
 {
     p_cxldram->current_state = DRAM_IDLE;
     p_cxldram->next_state = DRAM_IDLE;
@@ -528,6 +528,10 @@ struct parameter_value *load_parameters(char parameter_file[30])
             sscanf(buf + next_eql,"%d",&p->time_characteristics.tCMDDRAM);
         }else if((res_eql=strcmp(buf,"t_ANALYZE")) ==0){
             sscanf(buf + next_eql,"%d",&p->time_characteristics.tANALYZE);
+        }else if((res_eql=strcmp(buf,"L_CXL_switch")) ==0){
+            sscanf(buf + next_eql,"%d",&p->time_characteristics.L_CXL_switch);
+        }else if((res_eql=strcmp(buf,"L_read_compute_cmd")) ==0){
+            sscanf(buf + next_eql,"%d",&p->time_characteristics.L_read_compute_cmd);
         }else if((res_eql=strcmp(buf,"cxl_bandwidth")) ==0){
             sscanf(buf + next_eql,"%d",&p->cxl_bandwidth);
         // }else if((res_eql=strcmp(buf,"dram_bandwidth")) ==0){

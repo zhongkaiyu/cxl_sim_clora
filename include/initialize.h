@@ -203,6 +203,11 @@ struct ac_time_characteristics{
     int tANALYZE;       //data input setup time
     int tDRAMRL;         // dram read latency
     int tDRAMWL;         // dram write latency
+
+    /* Reviewer-requested overhead terms. Defaults are 0 so existing runs are
+     * unaffected; set in config/parameters.conf to enable. All values in ns. */
+    int L_CXL_switch;        /* fixed latency per CXL switch traversal (one-way) */
+    int L_read_compute_cmd;  /* fixed NDP-side command setup/dispatch overhead */
 }ac_timing;
 
 struct model_characteristics{

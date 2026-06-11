@@ -3,865 +3,387 @@
 #include <string.h>
 #include "../include/ssd.h"
 
-#define DEBUG
+/* #define DEBUG */
 
-struct npu_request *create_npu_request (struct cxl_switch_device_info * ssd, unsigned int req_type, int64_t duration){
-    struct npu_request* request1;
-    request1 = (struct npu_request*)malloc(sizeof(struct npu_request));
-    alloc_assert(request1,"npu_request");
-    memset(request1,0, sizeof(struct npu_request));
+/* ============================================================================
+ * CLoRA driver: consume a per-step JSON (one decoder pass) and emit all the
+ * CXL-link / NDP traffic + base-model GPU compute for the strategies chosen
+ * upstream by the Python plugin (E1..E4).
+ *
+ * One JSON == one decoder pass.  Per adapter:
+ *   E1  -> no CXL traffic (LoRA matrices cached in GPU HBM)
+ *   E2  -> one READ            (loads A,B over CXL)
+ *   E3  -> one READ_COMPUTE    (NDP computes the full LoRA path)
+ *   E4  -> one READ_COMPUTE    (NDP computes m=xA, GPU finishes y=mB)
+ * Plus one attention READ_COMPUTE per adapter, distributed across n_cxl
+ * devices (token-level partitioning).  Plus one NPU_COMPUTE for the base
+ * model.  All sizes are in BYTES; the simulator's bandwidths are in B/ns.
+ * ============================================================================ */
 
-    request1->type = req_type;
-    request1->begin_time = ssd->current_time;
-    request1->end_time = ssd->current_time + duration;
-    request1->idx = ssd->npu->req_idx;
+struct npu_request *create_npu_request(struct cxl_switch_device_info *ssd,
+                                       unsigned int req_type, int64_t duration) {
+    struct npu_request *r = (struct npu_request *)malloc(sizeof(struct npu_request));
+    alloc_assert(r, "npu_request");
+    memset(r, 0, sizeof(*r));
 
-    ssd->npu->req_idx += 1;
+    r->type       = req_type;
+    r->begin_time = ssd->current_time;
+    r->end_time   = ssd->current_time + duration;
+    r->idx        = ssd->npu->req_idx++;
 
-    if(ssd->npu->npu_reqs_head == NULL)          //The queue is empty
-    {
-        ssd->npu->npu_reqs_head = request1;
-        ssd->npu->npu_reqs_tail = request1;
-        ssd->npu->npu_reqs_queue_length += 1;
+    if (ssd->npu->npu_reqs_head == NULL) {
+        ssd->npu->npu_reqs_head = r;
+        ssd->npu->npu_reqs_tail = r;
+    } else {
+        ssd->npu->npu_reqs_tail->next_node = r;
+        ssd->npu->npu_reqs_tail = r;
     }
-    else
-    {
-        (ssd->npu->npu_reqs_tail)->next_node = request1;
-        ssd->npu->npu_reqs_tail = request1;
-        ssd->npu->npu_reqs_queue_length += 1;
-    }
-
-    return request1;
+    ssd->npu->npu_reqs_queue_length++;
+    return r;
 }
 
-struct request *create_ssd_request (struct cxl_switch_device_info * ssd, unsigned int ope, struct addr_info * addr, unsigned int addr_num){
-    struct request *request1;
+struct request *create_ssd_request(struct cxl_switch_device_info *ssd,
+                                   unsigned int ope,
+                                   struct addr_info *addr, unsigned int addr_num) {
+    struct request *req = (struct request *)malloc(sizeof(struct request));
+    alloc_assert(req, "ssd_request");
+    memset(req, 0, sizeof(*req));
 
-    request1 = (struct request*)malloc(sizeof(struct request));
-    alloc_assert(request1,"ssd_request");
-    memset(request1,0, sizeof(struct request));
+    req->time         = ssd->current_time;
+    req->idx          = ssd->npu->req_idx++;
+    req->size         = addr_num;
+    req->operation    = ope;
+    req->begin_time   = ssd->current_time;
+    req->next_node    = NULL;
+    req->distri_flag  = 0;
+    req->subs         = NULL;
+    req->need_distr_flag = NULL;
+    req->addr         = addr;
+    req->addr_num     = addr_num;
 
-    request1->time = ssd->current_time;
-    request1->idx = ssd->npu->req_idx;
-    request1->size = addr_num;
-    request1->operation = ope;
-    request1->begin_time = ssd->current_time;
-    request1->response_time = 0;
-    request1->energy_consumption = 0;
-    request1->next_node = NULL;
-    request1->distri_flag = 0;              // indicate whether this request has been distributed already
-    request1->subs = NULL;
-    request1->need_distr_flag = NULL;
-    request1->addr = addr;
-    request1->addr_num = addr_num;
-
-    ssd->npu->req_idx += 1;
-
-    if (request1->operation==READ)             // 统计相关参数
-    {
-        ssd->ave_read_size=(ssd->ave_read_size*ssd->read_request_count+request1->size)/(ssd->read_request_count+1);
-        ssd->read_request_size += request1->size * ssd->parameter->subpage_capacity;
-        ssd->read_request_c_a_size += 7 * request1->size / ssd->parameter->subpage_page;
-    }
-    else if (request1->operation == READ_COMPUTE)
-    {
-        ssd->rc_request_input_size += 64;
-        ssd->rc_request_result_size += ssd->parameter->cxl_channel_number * 64;
-        ssd->rc_request_c_a_size += 7 * request1->size / ssd->parameter->subpage_page;
-        ssd->rc_request_compute_ops += 64 * 64 * 64 * 2;
-    }
-    else if (request1->operation == WRITE)
-    {
-        ssd->ave_write_size=(ssd->ave_write_size*ssd->write_request_count+request1->size)/(ssd->write_request_count+1);
-        ssd->write_request_size += request1->size * ssd->parameter->subpage_capacity;
-    }
-
-    if(ssd->request_queue == NULL)          //The queue is empty
-    {
-        ssd->request_queue = request1;
-        ssd->request_tail = request1;
-        ssd->request_queue_length++;
-    }
-    else
-    {
-        (ssd->request_tail)->next_node = request1;
-        ssd->request_tail = request1;
-        ssd->request_queue_length++;
-    }
-
-    return request1;
-}
-
-int is_req_finished(struct cxl_switch_device_info* ssd, unsigned int req_idx){
-    struct Set *finished_reqs = ssd->npu->finished_reqs;
-    for (int i = 0; i < finished_reqs->used; i++){
-        if (finished_reqs->array[i] == req_idx){
-            return 1;
+    /* statistics */
+    if (ope == READ) {
+        ssd->ave_read_size = (ssd->ave_read_size * ssd->read_request_count + req->size)
+                             / (ssd->read_request_count + 1);
+        ssd->read_request_size  += req->size * ssd->parameter->subpage_capacity;
+        ssd->read_request_c_a_size += 7 * req->size / ssd->parameter->subpage_page;
+    } else if (ope == READ_COMPUTE) {
+        unsigned int in_bytes = 0, out_bytes = 0;
+        for (unsigned int i = 0; i < addr_num; i++) {
+            in_bytes  += addr[i].input_size;
+            out_bytes += addr[i].output_size;
         }
+        ssd->rc_request_input_size  += in_bytes;
+        ssd->rc_request_result_size += out_bytes;
+        ssd->rc_request_c_a_size    += 7 * req->size / ssd->parameter->subpage_page;
+    } else if (ope == WRITE) {
+        ssd->ave_write_size = (ssd->ave_write_size * ssd->write_request_count + req->size)
+                              / (ssd->write_request_count + 1);
+        ssd->write_request_size += req->size * ssd->parameter->subpage_capacity;
+    }
+
+    if (ssd->request_queue == NULL) {
+        ssd->request_queue = req;
+        ssd->request_tail  = req;
+    } else {
+        ssd->request_tail->next_node = req;
+        ssd->request_tail = req;
+    }
+    ssd->request_queue_length++;
+    return req;
+}
+
+static int is_req_finished(struct cxl_switch_device_info *ssd, unsigned int idx) {
+    struct Set *s = ssd->npu->finished_reqs;
+    for (size_t i = 0; i < s->used; i++) {
+        if (s->array[i] == idx) return 1;
     }
     return 0;
 }
 
-int npu_go_one_step(struct cxl_switch_device_info * ssd){
-    unsigned int req_idx;
-    int req_finished;
-    int go_one_step_flag = 1;
+static void npu_go_one_step(struct cxl_switch_device_info *ssd) {
+    if (ssd->npu->step_issue[ssd->npu->step] == 0) return;
 
-    if (ssd->npu->step_issue[ssd->npu->step] == 0){
+    unsigned int next = ssd->npu->step + 1;
+    struct Set *waits = ssd->npu->step_wait_reqs[next];
+    for (size_t i = 0; i < waits->used; i++) {
+        if (!is_req_finished(ssd, waits->array[i])) return;
+    }
+
+    printf("step%u finished, time=%lld ns = %.6f ms\n",
+           ssd->npu->step, (long long)ssd->current_time, ssd->current_time / 1e6);
+    ssd->npu->step++;
+}
+
+/* ----- request emitters ------------------------------------------------- */
+
+static struct addr_info *make_addr_array(unsigned int n) {
+    struct addr_info *a = (struct addr_info *)malloc(n * sizeof(struct addr_info));
+    alloc_assert(a, "addr_info[]");
+    memset(a, 0, n * sizeof(struct addr_info));
+    return a;
+}
+
+/* Pick the CXL device this adapter's matrices live on.  Simple round-robin
+ * by adapter id.  Production code would track actual placement. */
+static unsigned int adapter_home_device(unsigned int adapter_id,
+                                        unsigned int n_cxl) {
+    return adapter_id % n_cxl;
+}
+
+/* Emit the LoRA path for one adapter.  Returns the request idx to wait on, or
+ * (unsigned)-1 if no request was created (E1, batch=0). */
+static unsigned int emit_lora_for_adapter(struct cxl_switch_device_info *ssd,
+                                          const AdapterDecision *ad,
+                                          const JsonData *j) {
+    if (ad->batch == 0) return (unsigned)-1;
+
+    unsigned int D = j->model_d;
+    unsigned int S = j->s_dtype;
+    unsigned int per_layer_mat = j->n_layers * j->n_matrices;
+    unsigned int home = adapter_home_device(ad->id, j->n_cxl);
+
+    switch (ad->strategy) {
+    case 1: /* E1 -- cached on GPU */
+        return (unsigned)-1;
+
+    case 2: { /* E2: pull A and B over the CXL link once per batch */
+        struct addr_info *addr = make_addr_array(1);
+        addr[0].gpu_id      = 0;
+        addr[0].cxl_id      = home;
+        addr[0].size        = 2u * ad->rank * D * S * per_layer_mat;
+        addr[0].input_size  = 0;
+        addr[0].output_size = 0;
+        struct request *r = create_ssd_request(ssd, READ, addr, 1);
+        slice_request(ssd);
+        return r->idx;
+    }
+
+    case 3: { /* E3: NDP runs full LoRA path; only x in, y back */
+        struct addr_info *addr = make_addr_array(1);
+        addr[0].gpu_id      = 0;
+        addr[0].cxl_id      = home;
+        addr[0].size        = 2u * ad->rank * D * S * per_layer_mat;
+        addr[0].input_size  = ad->batch * D * S * per_layer_mat;
+        addr[0].output_size = ad->batch * D * S * per_layer_mat;
+        struct request *r = create_ssd_request(ssd, READ_COMPUTE, addr, 1);
+        slice_request(ssd);
+        return r->idx;
+    }
+
+    case 4: { /* E4: NDP computes m=xA only; GPU handles y=mB */
+        struct addr_info *addr = make_addr_array(1);
+        addr[0].gpu_id      = 0;
+        addr[0].cxl_id      = home;
+        addr[0].size        = ad->rank * D * S * per_layer_mat;
+        addr[0].input_size  = ad->batch * D * S * per_layer_mat;
+        addr[0].output_size = ad->batch * ad->rank * S * per_layer_mat;
+        struct request *r = create_ssd_request(ssd, READ_COMPUTE, addr, 1);
+        slice_request(ssd);
+        return r->idx;
+    }
+
+    default:
+        fprintf(stderr, "emit_lora: unknown strategy %u for adapter %u\n",
+                ad->strategy, ad->id);
+        return (unsigned)-1;
+    }
+}
+
+/* Emit the attention path for one adapter, distributed across all CXL devices
+ * at the token level (paper §5.2).
+ *
+ * In decode, Q has shape (B, D). Every device needs the *full* Q to compute
+ * attention on its KV slice, and every device returns a *full* partial output
+ * O(i) of shape (B, D). KV is the only quantity sharded across devices.
+ * Per-device transfer = 2*B*D*S bytes per layer (Q in, partial O back); the
+ * devices' links operate in parallel, matching paper Eq (8).
+ *
+ * Optionally, a fraction kv_in_gpu_fraction of the KV cache is duplicated in
+ * GPU HBM. Each CXL device only needs to read (1 - kv_in_gpu_fraction) of its
+ * KV slice from device DRAM.
+ */
+static unsigned int emit_attention_for_adapter(struct cxl_switch_device_info *ssd,
+                                               const AdapterDecision *ad,
+                                               const JsonData *j) {
+    if (ad->batch == 0 || ad->kv_tokens == 0) return (unsigned)-1;
+
+    unsigned int D = j->model_d;
+    unsigned int S = j->s_dtype;
+    unsigned int n_cxl = j->n_cxl;
+    if (n_cxl == 0) n_cxl = 1;
+
+    /* KV cache slice per device, reduced by the GPU-resident fraction. */
+    unsigned int kv_per_device = ad->kv_tokens / n_cxl;
+    if (kv_per_device == 0) kv_per_device = 1;
+    double p_cxl = 1.0 - j->kv_in_gpu_fraction;
+    if (p_cxl < 0.0) p_cxl = 0.0;
+    if (p_cxl > 1.0) p_cxl = 1.0;
+
+    unsigned int per_dev_dram = (unsigned int)(
+        2.0 * D * S * (double)kv_per_device * (double)j->n_layers * p_cxl);
+    if (per_dev_dram == 0) per_dev_dram = 1;
+    /* Full Q replicated to each device per layer; full partial O returned. */
+    unsigned int per_dev_input  = ad->batch * D * S * j->n_layers;
+    unsigned int per_dev_output = ad->batch * D * S * j->n_layers;
+
+    struct addr_info *addr = make_addr_array(n_cxl);
+    for (unsigned int c = 0; c < n_cxl; c++) {
+        addr[c].gpu_id      = 0;
+        addr[c].cxl_id      = c;
+        addr[c].size        = per_dev_dram;
+        addr[c].input_size  = per_dev_input;
+        addr[c].output_size = per_dev_output;
+    }
+    struct request *r = create_ssd_request(ssd, READ_COMPUTE, addr, n_cxl);
+    slice_request(ssd);
+    return r->idx;
+}
+
+/* ----- per-step issuer -------------------------------------------------- */
+
+int npu_process(struct cxl_switch_device_info *ssd, JsonData *j) {
+    if (!j) return 1;
+
+    /* We use a 2-step state machine: step 0 issues every request; once they
+     * all finish, step advances to 1 and the simulator drains. */
+    if (ssd->npu->step != 0) {
         return 0;
     }
 
-    // 决定npu是否可以进入下一个step
-    unsigned int next_step = ssd->npu->step + 1;
-    struct Set *next_step_wait_reqs = ssd->npu->step_wait_reqs[next_step];
-    for (int i = 0; i < next_step_wait_reqs->used; i++){
-        req_idx = next_step_wait_reqs->array[i];
-        req_finished = is_req_finished(ssd, req_idx);
-        if (req_finished == 0){     // 还有请求没完成，不能进入下一step
-            go_one_step_flag = 0;
-            break;
+    if (ssd->npu->step_issue[0] == 0) {
+#ifdef DEBUG
+        printf("npu_process: issuing for %u adapter(s) at t=%lld\n",
+               j->n_adapters, (long long)ssd->current_time);
+#endif
+        unsigned int n_cxl = j->n_cxl ? j->n_cxl : 1;
+        if (n_cxl > ssd->parameter->cxl_channel_number) {
+            n_cxl = ssd->parameter->cxl_channel_number;
         }
+        /* mutate (safe -- single owner) so downstream uses clamped value */
+        j->n_cxl = n_cxl;
+
+        for (unsigned int i = 0; i < j->n_adapters; i++) {
+            unsigned int idx;
+            idx = emit_lora_for_adapter(ssd, &j->adapters[i], j);
+            if (idx != (unsigned)-1) addSet(ssd->npu->step_wait_reqs[1], idx);
+
+            idx = emit_attention_for_adapter(ssd, &j->adapters[i], j);
+            if (idx != (unsigned)-1) addSet(ssd->npu->step_wait_reqs[1], idx);
+        }
+
+        if (j->base_model_compute_ns > 0.0) {
+            double total = j->base_model_compute_ns * (double)j->n_layers;
+            if (total < 1.0) total = 1.0;
+            struct npu_request *r =
+                create_npu_request(ssd, NPU_COMPUTE, (int64_t)total);
+            addSet(ssd->npu->step_wait_reqs[1], r->idx);
+        }
+
+        ssd->npu->step_issue[0] = 1;
+        ssd->npu->npu_finish    = 1;   /* nothing further to issue */
     }
 
-    // npu 进入下一个step
-    if (go_one_step_flag == 1){
-        printf("step%d finished, time=%lldns = %.6fms\n", ssd->npu->step, ssd->current_time, ssd->current_time/1e6);
-        ssd->npu->step += 1;
-    }
-
-
+    npu_go_one_step(ssd);
     return 0;
 }
 
-int npu_process (struct cxl_switch_device_info *ssd, JsonData *jsonData){
-    if (jsonData == NULL) {
-        fprintf(stderr, "Error reading JSON data\n");
-        return 1;
-    }
-    struct request *request;
-    struct npu_request *npu_request;
-    struct npu_info *npu = ssd->npu;
-#ifdef DEBUG
-    printf("enter npu_process, current time:%lld\n", ssd->current_time);
-    printf("npu step: %d\n", ssd->npu->step);
-#endif
-    int addr_num = 1;
-    int64_t t;
-    struct addr_info *addr = (struct addr_info *)malloc(addr_num*sizeof(struct addr_info)); 
-    unsigned int input_size = jsonData->input_token_num;//采用 FP16
+/* ----- request bookkeeping (npu side) ----------------------------------- */
 
-    double plan_1=jsonData->b1,plan_2=jsonData->b2,plan_3=jsonData->b3;
-
-    if (ssd->npu->step == 0) {          // step 0 --------------------------------------------
-        if (npu->step_issue[0] == 1){
-            npu_go_one_step(ssd);
-            return 0;
-        }
-
-        // Q_(𝑛+1)=X 𝑊_𝑄
-        // for(int i = 0; i<jsonData->q_rc_req_arrays; i++) {
-        //     addr_num = jsonData->q_rc_req[i][2];
-        //     struct addr_info *addr = (struct addr_info *)malloc(addr_num*sizeof(struct addr_info));
-        //     for(unsigned int j = 0;j < addr_num; j++){
-        //         addr[j].gpu_id = jsonData->q_rc_req[i][0];
-        //         addr[j].cxl_id = jsonData->q_rc_req[i][1];
-        //         addr[j].size = jsonData->q_rc_req[i][3];
-        //         addr[j].input_size = input_size;
-        //     }
-        //     request = create_ssd_request(ssd, READ_COMPUTE, addr, addr_num);
-        //     slice_request(ssd);
-        //     addSet(ssd->npu->step_wait_reqs[1], request->idx);
-        //     addr_num = 1;
-        // }
-
-        // for(int i = 0; i<jsonData->q_r_req_arrays; i++) {
-        //     addr_num = jsonData->q_r_req[i][2];
-        //     struct addr_info *addr = (struct addr_info *)malloc(addr_num*sizeof(struct addr_info));
-        //     for(unsigned int j = 0;j < addr_num; j++){
-        //         addr[j].gpu_id = jsonData->q_r_req[i][0];
-        //         addr[j].cxl_id = jsonData->q_r_req[i][1];
-        //         addr[j].size   = jsonData->q_r_req[i][3];
-        //     }
-        //     request = create_ssd_request(ssd, READ, addr, addr_num);
-        //     slice_request(ssd);
-        //     addSet(ssd->npu->step_wait_reqs[1], request->idx);
-        //     addr_num = 1;
-        // }
-
-        for(int i = 0; i<jsonData->q_r_req_arrays; i++) {
-            addr_num = jsonData->q_r_req[i][2];
-            addr_num = 10;
-            struct addr_info *addr = (struct addr_info *)malloc(addr_num*sizeof(struct addr_info));
-            for(unsigned int j = 0;j < addr_num; j++){
-                // addr[j].gpu_id = jsonData->q_r_req[i][0];
-                // addr[j].cxl_id = jsonData->q_r_req[i][1];
-                // addr[j].size   = jsonData->q_r_req[i][3];
-                addr[j].gpu_id = 0;
-                addr[j].cxl_id = 0;
-                addr[j].size   = 100000;
-                addr[j].input_size = 256;
-                addr[j].output_size = 256;
+void npu_trace_output(struct cxl_switch_device_info *ssd) {
+    struct npu_request *prev = NULL, *cur = ssd->npu->npu_reqs_head;
+    while (cur != NULL) {
+        if (ssd->current_time >= cur->end_time) {
+            addSet(ssd->npu->finished_reqs, cur->idx);
+            struct npu_request *gone = cur;
+            if (prev == NULL) {
+                ssd->npu->npu_reqs_head = cur->next_node;
+                if (ssd->npu->npu_reqs_head == NULL) ssd->npu->npu_reqs_tail = NULL;
+            } else {
+                prev->next_node = cur->next_node;
+                if (prev->next_node == NULL) ssd->npu->npu_reqs_tail = prev;
             }
-            for (int i = 0; i < 30; i++){
-                request = create_ssd_request(ssd, READ_COMPUTE, addr, addr_num);
-                slice_request(ssd);
-                request = create_ssd_request(ssd, READ, addr, addr_num);
-                slice_request(ssd);
-            }
-            addSet(ssd->npu->step_wait_reqs[1], request->idx);
-            addr_num = 1;
+            cur = cur->next_node;
+            free(gone);
+            ssd->npu->npu_reqs_queue_length--;
+        } else {
+            prev = cur;
+            cur  = cur->next_node;
         }
-
-
-        npu->step_issue[0] = 1;    // 该step的请求已经下发过一次
-        
-        ssd->npu->npu_finish = 1;   // 单步测试用
-        npu_go_one_step(ssd);
-    } else if (ssd->npu->step == 1){    // step 1 --------------------------------------------
-        if (npu->step_issue[1] == 1){
-            npu_go_one_step(ssd);
-            return 0;
-        }
-
-        //𝐾_(𝑛+1)=X 𝑊_K
-        for(int i = 0; i<jsonData->k_rc_req_arrays; i++) {
-            addr_num = jsonData->k_rc_req[i][2];
-            struct addr_info *addr = (struct addr_info *)malloc(addr_num*sizeof(struct addr_info));
-            for(unsigned int j = 0;j < addr_num; j++){
-                addr[j].gpu_id = jsonData->k_rc_req[i][0];
-                addr[j].cxl_id = jsonData->k_rc_req[i][1];
-                addr[j].size = 4*jsonData->k_rc_req[i][3];
-                addr[j].input_size = input_size;
-            }
-            request = create_ssd_request(ssd, READ_COMPUTE, addr, addr_num);
-            slice_request(ssd);
-            addSet(ssd->npu->step_wait_reqs[2], request->idx);
-            addr_num = 1;
-        }
-
-        for(int i = 0; i<jsonData->k_r_req_arrays; i++) {
-            addr_num = jsonData->k_r_req[i][2];
-            struct addr_info *addr = (struct addr_info *)malloc(addr_num*sizeof(struct addr_info));
-            for(unsigned int j = 0;j < addr_num; j++){
-                addr[j].gpu_id = jsonData->k_r_req[i][0];
-                addr[j].cxl_id = jsonData->k_r_req[i][1];
-                addr[j].size = 4*jsonData->k_r_req[i][3];
-            }
-            request = create_ssd_request(ssd, READ, addr, addr_num);
-            slice_request(ssd);
-            addSet(ssd->npu->step_wait_reqs[2], request->idx);
-            addr_num = 1;
-        }
-
-        //Load K1-Kn
-        t=jsonData->load_k_latency;
-        npu_request = create_npu_request(ssd, NPU_READ_DRAM, t);
-        addSet(ssd->npu->step_wait_reqs[5], npu_request->idx);
-
-        //Q_(𝑛+1)=X 𝑊_𝑄(Core)
-        t=jsonData->q_0_latency;
-        npu_request = create_npu_request(ssd, NPU_COMPUTE, t);
-        addSet(ssd->npu->step_wait_reqs[2], npu_request->idx);
-        
-        npu->step_issue[1] = 1;    // 该step的请求已经下发过一次
-        npu_go_one_step(ssd);
-    } else if (ssd->npu->step == 2){    // step 2 --------------------------------------------
-        if (npu->step_issue[2] == 1){
-            npu_go_one_step(ssd);
-            return 0;
-        }
-
-        //𝐾_(𝑛+1)=X 𝑊_𝐾(Core)
-        t=jsonData->k_0_latency;
-        npu_request = create_npu_request(ssd, NPU_COMPUTE, t);
-        addSet(ssd->npu->step_wait_reqs[3], npu_request->idx);
-
-        //∆Q_(𝑛+1)=X 𝐵_𝑄 𝐴_𝑄(RC)
-        //新函数，用来确定三种方案 比重并模拟，目前仅做依赖参考
-        t=jsonData->tmp_lora_latency;
-        npu_request = create_npu_request(ssd, NPU_COMPUTE, t);
-        addSet(ssd->npu->step_wait_reqs[3], npu_request->idx);
-
-
-        //𝑉_(𝑛+1)=X 𝑊_𝑉
-        for(int i = 0; i<jsonData->v_rc_req_arrays; i++) {
-            addr_num = jsonData->v_rc_req[i][2];
-            struct addr_info *addr = (struct addr_info *)malloc(addr_num*sizeof(struct addr_info));
-            for(unsigned int j = 0;j < addr_num; j++){
-                addr[j].gpu_id = jsonData->v_rc_req[i][0];
-                addr[j].cxl_id = jsonData->v_rc_req[i][1];
-                addr[j].size = 4*jsonData->v_rc_req[i][3];
-                addr[j].input_size = input_size;
-            }
-            request = create_ssd_request(ssd, READ_COMPUTE, addr, addr_num);
-            slice_request(ssd);
-            addSet(ssd->npu->step_wait_reqs[7], request->idx);
-            addr_num = 1;
-        }
-
-        for(int i = 0; i<jsonData->v_r_req_arrays; i++) {
-            addr_num = jsonData->v_r_req[i][2];
-            struct addr_info *addr = (struct addr_info *)malloc(addr_num*sizeof(struct addr_info));
-            for(unsigned int j = 0;j < addr_num; j++){
-                addr[j].gpu_id = jsonData->v_r_req[i][0];
-                addr[j].cxl_id = jsonData->v_r_req[i][1];
-                addr[j].size = 4*jsonData->v_r_req[i][3];
-            }
-            request = create_ssd_request(ssd, READ, addr, addr_num);
-            slice_request(ssd);
-            addSet(ssd->npu->step_wait_reqs[7], request->idx);
-            addr_num = 1;
-        }
-
-        npu->step_issue[2] = 1;    // 该step的请求已经下发过一次
-        npu_go_one_step(ssd);
-    } else if (ssd->npu->step == 3){    // step 3 --------------------------------------------
-        if (npu->step_issue[3] == 1){
-            npu_go_one_step(ssd);
-            return 0;
-        }
-
-        //∆𝐾_(𝑛+1)=X 𝐵_𝐾 𝐴_𝐾(C-RC)
-        //新函数，用来确定三种方案 比重并模拟，目前仅做依赖参考
-        t=jsonData->tmp_lora_latency;
-        npu_request = create_npu_request(ssd, NPU_COMPUTE, t);
-        addSet(ssd->npu->step_wait_reqs[4], npu_request->idx);
-
-        //Q_(𝑛+1)’= Q_(𝑛+1)+ ∆Q_(𝑛+1)(Core)
-        t=jsonData->q_1_latency;
-        npu_request = create_npu_request(ssd, NPU_COMPUTE, t);
-        addSet(ssd->npu->step_wait_reqs[5], npu_request->idx);
-
-        npu->step_issue[3] = 1;    // 该step的请求已经下发过一次
-        npu_go_one_step(ssd);
-    } else if (ssd->npu->step == 4){    // step 4 --------------------------------------------
-        if (npu->step_issue[4] == 1){
-            npu_go_one_step(ssd);
-            return 0;
-        }
-
-        //𝐾_(𝑛+1)’= 𝐾_(𝑛+1)+ ∆𝐾_(𝑛+1)(Core)
-        t=jsonData->k_1_latency;
-        npu_request = create_npu_request(ssd, NPU_COMPUTE, t);
-        addSet(ssd->npu->step_wait_reqs[5], npu_request->idx);
-
-        //Load V1-Vn
-        t=jsonData->load_v_latency;
-        npu_request = create_npu_request(ssd, NPU_READ_DRAM, t);
-        addSet(ssd->npu->step_wait_reqs[10], npu_request->idx);
-
-        npu->step_issue[4] = 1;    // 该step的请求已经下发过一次
-        npu_go_one_step(ssd);
-    } else if (ssd->npu->step == 5){    // step 5 --------------------------------------------
-        if (npu->step_issue[5] == 1){
-            npu_go_one_step(ssd);
-            return 0;
-        }
-
-        //𝑃_{𝑛+1} = 𝑄′_{𝑛+1} [𝐾_1^′..𝐾′ _{𝑛+1}] (Core)
-        t=jsonData->p_latency;
-        npu_request = create_npu_request(ssd, NPU_COMPUTE, t);
-        addSet(ssd->npu->step_wait_reqs[6], npu_request->idx);
-
-        npu->step_issue[5] = 1;    // 该step的请求已经下发过一次
-        npu_go_one_step(ssd);
-    } else if (ssd->npu->step == 6){    // step 6 --------------------------------------------
-        if (npu->step_issue[6] == 1){
-            npu_go_one_step(ssd);
-            return 0;
-        }
-
-        // 𝑆_(𝑛+1)= Softmax𝑃_(𝑛+1) (Core)
-        t=jsonData->s_latency;
-        npu_request = create_npu_request(ssd, NPU_COMPUTE, t);
-        addSet(ssd->npu->step_wait_reqs[10], npu_request->idx);
-
-        npu->step_issue[6] = 1;    // 该step的请求已经下发过一次
-        npu_go_one_step(ssd);
-    } else if (ssd->npu->step == 7){    // step 7 --------------------------------------------
-        if (npu->step_issue[7] == 1){
-            npu_go_one_step(ssd);
-            return 0;
-        }
-
-        //𝑉_(𝑛+1)=X 𝑊_𝑉(Core)
-        t=jsonData->v_0_latency;
-        npu_request = create_npu_request(ssd, NPU_COMPUTE, t);
-        addSet(ssd->npu->step_wait_reqs[8], npu_request->idx);
-
-        npu->step_issue[7] = 1;    // 该step的请求已经下发过一次
-        npu_go_one_step(ssd);
-    } else if (ssd->npu->step == 8){    // step 8 --------------------------------------------
-        if (npu->step_issue[8] == 1){
-            npu_go_one_step(ssd);
-            return 0;
-        }
-
-        //∆𝑉_(𝑛+1)=X 𝐵_𝑉 𝐴_𝑉(C-RC)
-        //新函数，用来确定三种方案 比重并模拟，目前仅做依赖参考
-        t=jsonData->tmp_lora_latency;
-        npu_request = create_npu_request(ssd, NPU_SF_COMPUTE, t);
-        addSet(ssd->npu->step_wait_reqs[9], npu_request->idx);
-
-        npu->step_issue[8] = 1;    // 该step的请求已经下发过一次
-        npu_go_one_step(ssd);
-    } else if (ssd->npu->step == 9){    // step 9 --------------------------------------------
-        if (npu->step_issue[9] == 1){
-            npu_go_one_step(ssd);
-            return 0;
-        }
-
-        //V_(𝑛+1)’= 𝑉_(𝑛+1)+ ∆𝑉_(𝑛+1)(Core)
-        t=jsonData->v_1_latency;
-        npu_request = create_npu_request(ssd, NPU_COMPUTE, t);
-        addSet(ssd->npu->step_wait_reqs[10], npu_request->idx);
-
-        npu->step_issue[9] = 1;    // 该step的请求已经下发过一次
-        npu_go_one_step(ssd);
-    } else if (ssd->npu->step == 10){    // step 10 --------------------------------------------
-        if (npu->step_issue[10] == 1){
-            npu_go_one_step(ssd);
-            return 0;
-        }
-
-        //𝐴_{𝑛+1} = 𝑆_{𝑛+1}  [𝑉′_{𝑛+1}..]
-        t=jsonData->a_latency;
-        npu_request = create_npu_request(ssd, NPU_COMPUTE, t);
-        addSet(ssd->npu->step_wait_reqs[11], npu_request->idx);
-
-        npu->step_issue[10] = 1;    // 该step的请求已经下发过一次
-        npu_go_one_step(ssd);
-    } else if (ssd->npu->step == 11){    // step 11 --------------------------------------------
-        if (npu->step_issue[11] == 1){
-            npu_go_one_step(ssd);
-            return 0;
-        }
-
-        //O_(𝑛+1)=𝑊_O  A_(n+1)
-        for(int i = 0; i<jsonData->o_rc_req_arrays; i++) {
-            addr_num = jsonData->o_rc_req[i][2];
-            struct addr_info *addr = (struct addr_info *)malloc(addr_num*sizeof(struct addr_info));
-            for(unsigned int j = 0;j < addr_num; j++){
-                addr[j].gpu_id = jsonData->o_rc_req[i][0];
-                addr[j].cxl_id = jsonData->o_rc_req[i][1];
-                addr[j].size = 4*jsonData->o_rc_req[i][3];
-                addr[j].input_size = input_size;
-            }
-            request = create_ssd_request(ssd, READ_COMPUTE, addr, addr_num);
-            slice_request(ssd);
-            addSet(ssd->npu->step_wait_reqs[12], request->idx);
-            addr_num = 1;
-        }
-
-        for(int i = 0; i<jsonData->o_r_req_arrays; i++) {
-            addr_num = jsonData->o_r_req[i][2];
-            struct addr_info *addr = (struct addr_info *)malloc(addr_num*sizeof(struct addr_info));
-            for(unsigned int j = 0;j < addr_num; j++){
-                addr[j].gpu_id = jsonData->o_r_req[i][0];
-                addr[j].cxl_id = jsonData->o_r_req[i][1];
-                addr[j].size = 4*jsonData->o_r_req[i][3];
-            }
-            request = create_ssd_request(ssd, READ, addr, addr_num);
-            slice_request(ssd);
-            addSet(ssd->npu->step_wait_reqs[12], request->idx);
-            addr_num = 1;
-        }
-        npu->step_issue[11] = 1;    // 该step的请求已经下发过一次
-        npu_go_one_step(ssd);
-    } else if (ssd->npu->step == 12){    // step 12 --------------------------------------------
-        if (npu->step_issue[12] == 1){
-            npu_go_one_step(ssd);
-            return 0;
-        }
-
-        //O_(𝑛+1)= 𝑊_O  A_(n+1)(Core)
-        t=jsonData->o_0_latency;
-        npu_request = create_npu_request(ssd, NPU_COMPUTE, t);
-        addSet(ssd->npu->step_wait_reqs[13], npu_request->idx);
-
-        npu->step_issue[12] = 1;    // 该step的请求已经下发过一次
-        npu_go_one_step(ssd);
-    } else if (ssd->npu->step == 13){    // step 13 --------------------------------------------
-        if (npu->step_issue[13] == 1){
-            npu_go_one_step(ssd);
-            return 0;
-        }
-
-        //∆O_(𝑛+1)=𝐵_O 𝐴_O  A_(n+1)(C-RC)
-        //新函数，用来确定三种方案 比重并模拟，目前仅做依赖参考
-        t=jsonData->tmp_lora_latency;
-        npu_request = create_npu_request(ssd, NPU_SF_COMPUTE, t);
-        addSet(ssd->npu->step_wait_reqs[14], npu_request->idx);
-
-        npu->step_issue[13] = 1;    // 该step的请求已经下发过一次
-        npu_go_one_step(ssd);
-    } else if (ssd->npu->step == 14){    // step 14 --------------------------------------------
-        if (npu->step_issue[14] == 1){
-            npu_go_one_step(ssd);
-            return 0;
-        }
-
-        //O_(𝑛+1)’= O_(𝑛+1)+ ∆O_(𝑛+1)(Core)
-        t=jsonData->o_1_latency;
-        npu_request = create_npu_request(ssd, NPU_COMPUTE, t);
-        addSet(ssd->npu->step_wait_reqs[15], npu_request->idx);
-
-        npu->step_issue[14] = 1;    // 该step的请求已经下发过一次
-        npu_go_one_step(ssd);
-    } else if (ssd->npu->step == 15){    // step 15 --------------------------------------------
-        if (npu->step_issue[15] == 1){
-            npu_go_one_step(ssd);
-            return 0;
-        }
-
-        //G_(𝑛+1)=𝑊_G  〖O’〗_(n+1)
-        for(int i = 0; i<jsonData->g_rc_req_arrays; i++) {
-            addr_num = jsonData->g_rc_req[i][2];
-            struct addr_info *addr = (struct addr_info *)malloc(addr_num*sizeof(struct addr_info));
-            for(unsigned int j = 0;j < addr_num; j++){
-                addr[j].gpu_id = jsonData->g_rc_req[i][0];
-                addr[j].cxl_id = jsonData->g_rc_req[i][1];
-                addr[j].size = 4*jsonData->g_rc_req[i][3];
-                addr[j].input_size = input_size;
-            }
-            request = create_ssd_request(ssd, READ_COMPUTE, addr, addr_num);
-            slice_request(ssd);
-            addSet(ssd->npu->step_wait_reqs[16], request->idx);
-            addr_num = 1;
-        }
-
-        for(int i = 0; i<jsonData->g_r_req_arrays; i++) {
-            addr_num = jsonData->g_r_req[i][2];
-            struct addr_info *addr = (struct addr_info *)malloc(addr_num*sizeof(struct addr_info));
-            for(unsigned int j = 0;j < addr_num; j++){
-                addr[j].gpu_id = jsonData->g_r_req[i][0];
-                addr[j].cxl_id = jsonData->g_r_req[i][1];
-                addr[j].size = 4*jsonData->g_r_req[i][3];
-            }
-            request = create_ssd_request(ssd, READ, addr, addr_num);
-            slice_request(ssd);
-            addSet(ssd->npu->step_wait_reqs[16], request->idx);
-            addr_num = 1;
-        }
-        
-        npu->step_issue[15] = 1;    // 该step的请求已经下发过一次
-        npu_go_one_step(ssd);
-    } else if (ssd->npu->step == 16){    // step 16 --------------------------------------------
-        if (npu->step_issue[16] == 1){
-            npu_go_one_step(ssd);
-            return 0;
-        }
-
-        //𝐺_(𝑛+1)= 𝑊_𝐺  〖𝑂′〗_(n+1)(Core)
-        t=jsonData->g_0_latency;
-        npu_request = create_npu_request(ssd, NPU_COMPUTE, t);
-        addSet(ssd->npu->step_wait_reqs[17], npu_request->idx);
-
-        //𝑈_(𝑛+1)=𝑊_𝑈  〖O’〗_(n+1)
-        for(int i = 0; i<jsonData->u_rc_req_arrays; i++) {
-            addr_num = jsonData->u_rc_req[i][2];
-            struct addr_info *addr = (struct addr_info *)malloc(addr_num*sizeof(struct addr_info));
-            for(unsigned int j = 0;j < addr_num; j++){
-                addr[j].gpu_id = jsonData->u_rc_req[i][0];
-                addr[j].cxl_id = jsonData->u_rc_req[i][1];
-                addr[j].size = 4*jsonData->u_rc_req[i][3];
-                addr[j].input_size = input_size;
-            }
-            request = create_ssd_request(ssd, READ_COMPUTE, addr, addr_num);
-            slice_request(ssd);
-            addSet(ssd->npu->step_wait_reqs[17], request->idx);
-            addr_num = 1;
-        }
-
-        for(int i = 0; i<jsonData->u_r_req_arrays; i++) {
-            addr_num = jsonData->u_r_req[i][2];
-            struct addr_info *addr = (struct addr_info *)malloc(addr_num*sizeof(struct addr_info));
-            for(unsigned int j = 0;j < addr_num; j++){
-                addr[j].gpu_id = jsonData->u_r_req[i][0];
-                addr[j].cxl_id = jsonData->u_r_req[i][1];
-                addr[j].size = 4*jsonData->u_r_req[i][3];
-            }
-            request = create_ssd_request(ssd, READ, addr, addr_num);
-            slice_request(ssd);
-            addSet(ssd->npu->step_wait_reqs[17], request->idx);
-            addr_num = 1;
-        }
-        
-        npu->step_issue[16] = 1;    // 该step的请求已经下发过一次
-        npu_go_one_step(ssd);
-    } else if (ssd->npu->step == 17){    // step 17 --------------------------------------------
-        if (npu->step_issue[17] == 1){
-            npu_go_one_step(ssd);
-            return 0;
-        }
-
-        //∆𝐺_(𝑛+1)=𝐵_𝐺 𝐴_𝐺  〖𝑂′〗_(n+1)(C-RC)
-        //新函数，用来确定三种方案 比重并模拟，目前仅做依赖参考
-        t=jsonData->tmp_lora_latency;
-        npu_request = create_npu_request(ssd, NPU_SF_COMPUTE, t);
-        addSet(ssd->npu->step_wait_reqs[18], npu_request->idx);
-
-        //𝑈_(𝑛+1)= 𝑊_𝑈  〖𝑂′〗_(n+1)(Core)
-        t=jsonData->u_0_latency;
-        npu_request = create_npu_request(ssd, NPU_COMPUTE, t);
-        addSet(ssd->npu->step_wait_reqs[18], npu_request->idx);
-
-        npu->step_issue[17] = 1;    // 该step的请求已经下发过一次
-        npu_go_one_step(ssd);
-    } else if (ssd->npu->step == 18){    // step 18 --------------------------------------------
-        if (npu->step_issue[18] == 1){
-            npu_go_one_step(ssd);
-            return 0;
-        }
-
-        //〖𝐺′〗_(𝑛+1)’= 𝐺_(𝑛+1)+ ∆𝐺_(𝑛+1)(Core)
-        t=jsonData->g_1_latency;
-        npu_request = create_npu_request(ssd, NPU_COMPUTE, t);
-        addSet(ssd->npu->step_wait_reqs[20], npu_request->idx);
-
-        //∆𝑈_(𝑛+1)=𝐵_𝑈 𝐴_𝑈  〖𝑂′〗_(n+1)(C-RC)
-        //新函数，用来确定三种方案 比重并模拟，目前仅做依赖参考
-        t=jsonData->tmp_lora_latency;
-        npu_request = create_npu_request(ssd, NPU_SF_COMPUTE, t);
-        addSet(ssd->npu->step_wait_reqs[19], npu_request->idx);
-
-        npu->step_issue[18] = 1;    // 该step的请求已经下发过一次
-        npu_go_one_step(ssd);
-    } else if (ssd->npu->step == 19){    // step 19 --------------------------------------------
-        if (npu->step_issue[19] == 1){
-            npu_go_one_step(ssd);
-            return 0;
-        }
-
-        //〖𝑈′〗_(𝑛+1)’= 𝑈_(𝑛+1)+ ∆𝑈_(𝑛+1)(Core)
-        t=jsonData->u_1_latency;
-        npu_request = create_npu_request(ssd, NPU_COMPUTE, t);
-        addSet(ssd->npu->step_wait_reqs[20], npu_request->idx);
-
-        npu->step_issue[19] = 1;    // 该step的请求已经下发过一次
-        npu_go_one_step(ssd);
-    } else if (ssd->npu->step == 20){    // step 20 --------------------------------------------
-        if (npu->step_issue[20] == 1){
-            npu_go_one_step(ssd);
-            return 0;
-        }
-
-        //Output_{n+1} = W_1 (G'_{n+1} + U'_{n+1})
-        for(int i = 0; i<jsonData->output_rc_req_arrays; i++) {
-            addr_num = jsonData->output_rc_req[i][2];
-            struct addr_info *addr = (struct addr_info *)malloc(addr_num*sizeof(struct addr_info));
-            for(unsigned int j = 0;j < addr_num; j++){
-                addr[j].gpu_id = jsonData->output_rc_req[i][0];
-                addr[j].cxl_id = jsonData->output_rc_req[i][1];
-                addr[j].size = 4*jsonData->output_rc_req[i][3];
-                addr[j].input_size = input_size;
-            }
-            request = create_ssd_request(ssd, READ_COMPUTE, addr, addr_num);
-            slice_request(ssd);
-            addSet(ssd->npu->step_wait_reqs[21], request->idx);
-            addr_num = 1;
-        }
-
-        for(int i = 0; i<jsonData->output_r_req_arrays; i++) {
-            addr_num = jsonData->output_r_req[i][2];
-            struct addr_info *addr = (struct addr_info *)malloc(addr_num*sizeof(struct addr_info));
-            for(unsigned int j = 0;j < addr_num; j++){
-                addr[j].gpu_id = jsonData->output_r_req[i][0];
-                addr[j].cxl_id = jsonData->output_r_req[i][1];
-                addr[j].size = 4*jsonData->output_r_req[i][3];
-            }
-            request = create_ssd_request(ssd, READ, addr, addr_num);
-            slice_request(ssd);
-            addSet(ssd->npu->step_wait_reqs[21], request->idx);
-            addr_num = 1;
-        }
-         
-        npu->step_issue[20] = 1;    // 该step的请求已经下发过一次
-        npu_go_one_step(ssd);
-    } else if (ssd->npu->step == 21){    // step 21 --------------------------------------------
-        if (npu->step_issue[21] == 1){
-            npu_go_one_step(ssd);
-            return 0;
-        }
-
-        //Output_{n+1} = W_1 (G'_{n+1} + U'_{n+1})(Core)
-        t=jsonData->output_latency;
-        npu_request = create_npu_request(ssd, NPU_COMPUTE, t);
-        addSet(ssd->npu->step_wait_reqs[22], npu_request->idx);
-
-        npu->step_issue[21] = 1;    // 该step的请求已经下发过一次
-        npu_go_one_step(ssd);
-    } else if (ssd->npu->step == 22){    // step 22 --------------------------------------------
-        ssd->npu->npu_finish = 1;//结束
-    }
-
-
-    return 0;
-}
-
-void npu_trace_output(struct cxl_switch_device_info* ssd) {
-#ifdef DEBUG
-    printf("enter trace_output, ssd's current time:%lld\n", ssd->current_time);
-    printf("ssd->npu->npu_reqs_queue_length:%d\n", ssd->npu->npu_reqs_queue_length);
-#endif
-    struct npu_request *pre_node = NULL, *req = ssd->npu->npu_reqs_head;
-    while(req != NULL) {
-        if (ssd->current_time >= req->end_time) { // 当前req已经结束
-            addSet(ssd->npu->finished_reqs, req->idx); // 记录执行完成的requests
-            if(pre_node == NULL) { // 当前req是整个ssd中第一个
-                if(req->next_node == NULL) { //当前request是queue中最后一个
-                    req = NULL;
-                    ssd->npu->npu_reqs_head = NULL;
-                    ssd->npu->npu_reqs_tail = NULL;
-                    ssd->npu->npu_reqs_queue_length --;
-                }
-                else { // 当前req不是queue中最后一个
-                    ssd->npu->npu_reqs_head = req->next_node;
-                    pre_node = req;
-                    req = req->next_node;
-                    free(pre_node);
-                    pre_node = NULL;
-                    ssd->npu->npu_reqs_queue_length--;
-                }
-            }
-            else { // 当前req不是整个ssd中第一个
-                if(req->next_node == NULL) { // 当前req是queue中最后一个
-                    pre_node->next_node = NULL;
-                    free(req);
-                    req = NULL;
-                    ssd->npu->npu_reqs_tail = pre_node;
-                    ssd->npu->npu_reqs_queue_length--;
-                }
-                else { // 当前req不是queue中最后一个
-                    pre_node->next_node = req->next_node;
-                    free(req);
-                    req = pre_node->next_node;
-                    ssd->npu->npu_reqs_queue_length--;
-                }
-
-            }
-        }
-        else { // 当前req还没有结束
-            pre_node = req;
-            req = req->next_node;
-        }
-
     }
 }
 
+/* ----- top-level simulate ----------------------------------------------- */
 
-/******************simulate() *********************************************************************
- *simulate()是核心处理函数，主要实现的功能包括
- *1,从trace文件中获取一条请求，挂到ssd->request
- *2，根据ssd是否有dram分别处理读出来的请求，把这些请求处理成为读写子请求，挂到ssd->channel或者ssd上
- *3，按照事件的先后来处理这些读写子请求。
- *4，输出每条请求的子请求都处理完后的相关信息到outputfile文件中
- **************************************************************************************************/
-struct cxl_switch_device_info *simulate(struct cxl_switch_device_info *ssd, char *trace_filename) {
-
-    fprintf(ssd->outputfile, "      arrive           lsn     size ope     begin time    response time    process time\n");
+struct cxl_switch_device_info *simulate(struct cxl_switch_device_info *ssd,
+                                        char *trace_filename) {
+    fprintf(ssd->outputfile,
+            "      arrive           lsn     size ope     begin time"
+            "    response time    process time\n");
     fflush(ssd->outputfile);
 
     JsonData *jsonData = readJsonData(trace_filename);
     if (jsonData == NULL) {
-        fprintf(stderr, "Error reading NULL JSON data: %s\n", trace_filename);
+        fprintf(stderr, "simulate: failed to read trace JSON: %s\n",
+                trace_filename);
         return NULL;
     }
 
+    ssd->simulation_start_time = ssd->current_time;
+    int64_t safety_iters = 0;
+    const int64_t safety_cap = (int64_t)2e8;  /* hard cap so we never wedge */
+
     while (1) {
-#ifdef DEBUG
-    int sum_busy_channel = 0;
-    printf("\n$$$$ time: %lld\n", ssd->current_time);
-    for(int i=0; i<ssd->parameter->cxl_channel_number; i++) {
-        if (ssd->bottom_channel_head[i].subs_r_head != NULL || ssd->bottom_channel_head[i].subs_rc_head != NULL || ssd->bottom_channel_head[i].subs_w_head != NULL) {
-            sum_busy_channel++;
-            printf("  -------------- cxl %d --------------\n", i);
-            printf("cxlctrl%d/%d/%d & cxl_dram%d/%d/%d & cxl_pe%d/%d/%d\n", 
-            ssd->bottom_channel_head[i].cxl_device->chip_head[0].cxlctrl->current_state,
-            ssd->bottom_channel_head[i].cxl_device->chip_head[0].cxlctrl->next_state,
-            ssd->bottom_channel_head[i].cxl_device->chip_head[0].cxlctrl->next_state_predict_time,
-            ssd->bottom_channel_head[i].cxl_device->chip_head[0].cxldram->current_state,
-            ssd->bottom_channel_head[i].cxl_device->chip_head[0].cxldram->next_state,
-            ssd->bottom_channel_head[i].cxl_device->chip_head[0].cxldram->next_state_predict_time,
-            ssd->bottom_channel_head[i].cxl_device->chip_head[0].pe->current_state,
-            ssd->bottom_channel_head[i].cxl_device->chip_head[0].pe->next_state,
-            ssd->bottom_channel_head[i].cxl_device->chip_head[0].pe->next_state_predict_time      
-            );
-            struct sub_request *sub = NULL;
-
-            // 打印read sub
-            sub = ssd->bottom_channel_head[i].subs_r_head;
-            if(sub != NULL) printf("  read@@ ");
-            while (sub != NULL){
-                printf(" sub %d: state %d,from cxl%d & gpu%d & size%d & num%d  | ",sub->idx, sub->current_state, sub->p_addr[0]->cxl_id, sub->p_addr[0]->gpu_id, sub->p_addr[0]->size, sub->addr_num);
-                sub = sub->next_node;
-            }
-            if(ssd->bottom_channel_head[i].subs_r_head != NULL) printf("\n");
-
-            // 打印read compute sub
-            sub = ssd->bottom_channel_head[i].subs_rc_head;
-            if(sub != NULL) printf("  read_compute@@ ");
-            while (sub != NULL){
-                printf(" sub %d: state %d,from cxl%d & gpu%d & size%d & num%d & next_stage_time%d | ",sub->idx, sub->current_state, sub->p_addr[0]->cxl_id, sub->p_addr[0]->gpu_id, sub->p_addr[0]->size, sub->addr_num, sub->next_state_predict_time);
-                sub = sub->next_node;
-            }
-            if(ssd->bottom_channel_head[i].subs_rc_head != NULL) printf("\n");
-
-            // 打印write sub
-            sub = ssd->bottom_channel_head[i].subs_w_head;
-            if(sub != NULL) printf("  write@@ ");
-            while (sub != NULL){
-                printf(" sub %d: state %d,from cxl%d & gpu%d & size%d & num%d  | ",sub->idx, sub->current_state, sub->p_addr[0]->cxl_id, sub->p_addr[0]->gpu_id, sub->p_addr[0]->size, sub->addr_num);
-                sub = sub->next_node;
-            }
-            if(ssd->bottom_channel_head[i].subs_w_head != NULL) printf("\n");
-        }
-    }
-    printf("** cxl non empty channels: %d\n", sum_busy_channel);
-    // 刷新输出，使得输出能够正确的输入到ouput文件中
-    fflush(stdout);
-#endif
-        // update system time
         find_nearest_event_sys(ssd);
-
-        // npu step
         npu_process(ssd, jsonData);
-
-        // ssd step
-        process(ssd); // 处理ssd侧的状态变化
-
-        // trace all finished npu request
+        process(ssd);
         npu_trace_output(ssd);
-
-        // trace all finished ssd request
         trace_output(ssd);
 
-        // end of simulation
-        if((ssd->npu->npu_finish == 1) && (ssd->request_queue == NULL) && (ssd->npu->npu_reqs_head == NULL)) {
+        if (ssd->npu->npu_finish == 1 &&
+            ssd->request_queue == NULL &&
+            ssd->npu->npu_reqs_head == NULL) {
+            break;
+        }
+
+        if (++safety_iters > safety_cap) {
+            fprintf(stderr,
+                    "simulate: safety cap of %lld iterations hit -- aborting.\n",
+                    (long long)safety_cap);
             break;
         }
     }
 
+    ssd->simulation_end_time = ssd->current_time;
+
+    /* Final, machine-parseable line for the Python driver. */
+    int64_t duration = ssd->simulation_end_time - ssd->simulation_start_time;
+    printf("\nCLORA_RESULT duration_ns=%lld start_ns=%lld end_ns=%lld\n",
+           (long long)duration,
+           (long long)ssd->simulation_start_time,
+           (long long)ssd->simulation_end_time);
+
+    freeJsonData(jsonData);
     return ssd;
 }
 
-
 int main(int argc, char *argv[]) {
-    struct user_args *uargs = (struct user_args*) malloc(sizeof(struct user_args));
+    struct user_args *uargs = (struct user_args *)malloc(sizeof(struct user_args));
     alloc_assert(uargs, "user args");
-    memset(uargs, 0, sizeof(struct user_args));
+    memset(uargs, 0, sizeof(*uargs));
 
     if (parse_user_args(argc, argv, uargs) == -1) {
         display_help();
+        free(uargs);
         return 0;
     }
 
     display_title();
 
-    // simulate_ssd is the main function to initialize and simulate a single ssd device
-    struct cxl_switch_device_info *ssd = (struct cxl_switch_device_info*) malloc(sizeof(struct cxl_switch_device_info));
-    alloc_assert(ssd,"ssd");
-    memset(ssd, 0, sizeof(struct cxl_switch_device_info));
+    struct cxl_switch_device_info *ssd =
+        (struct cxl_switch_device_info *)malloc(sizeof(struct cxl_switch_device_info));
+    alloc_assert(ssd, "ssd");
+    memset(ssd, 0, sizeof(*ssd));
 
     ssd = initialize_ssd(ssd, uargs);
     printf("finish initialize ssd\n");
@@ -872,14 +394,13 @@ int main(int argc, char *argv[]) {
     display_simulation_intro(ssd);
     ssd = simulate(ssd, uargs->trace_filename);
 
-    statistic_output(ssd);
-    close_file(ssd);
-
-    free(ssd);
+    if (ssd != NULL) {
+        statistic_output(ssd);
+        close_file(ssd);
+        free(ssd);
+    }
 
     free(uargs);
-    printf("\nThe simulation is completed! \n");
-
+    printf("\nThe simulation is completed!\n");
     return 0;
 }
-
