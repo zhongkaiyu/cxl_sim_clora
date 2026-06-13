@@ -35,6 +35,7 @@ from clora_strategy import (  # noqa: E402
     SystemState,
     choose_strategy,
     classify_adapters,
+    compute_kv_in_gpu_fraction,
     estimate_base_model_ns_per_layer,
     pre_cache_hot_adapters,
     cost_lora,
@@ -424,6 +425,94 @@ def t17_moe_base_time() -> None:
             f"dense={dense}, moe={moe}, ratio={dense/moe}")
 
 
+# ----------------------------------------------------------------- t18
+
+def t18_gpu_attention_charged() -> None:
+    """estimate_base_model_ns_per_layer charges Eq (7)'s GPU attention share.
+
+    Round-number fixture (compute negligible, HBM-bound):
+        gpu_mem_bw = 1e12 B/s, n_layers = 10, base = 10 GB
+        -> base bytes/layer = 1e9 -> 1,000,000 ns
+        kv_tokens_in_gpu = 61,440 with D=4096, S=2
+        -> attention bytes/layer = 2*4096*2*61440 = 1,006,632,960
+        -> per_layer = (1e9 + 1.00663e9) / 1e12 * 1e9 ~= 2,006,633 ns
+    """
+    print("\n[t18] GPU-side attention rides the base roofline")
+    hw = replace(HW, gpu_compute=1e15, gpu_mem_bw=1e12)
+    model = ModelConfig(d=4096)
+
+    base_only = estimate_base_model_ns_per_layer(
+        total_batch=1, model=model, hw=hw,
+        base_model_bytes=10 * 10**9, n_layers=10)
+    with_kv = estimate_base_model_ns_per_layer(
+        total_batch=1, model=model, hw=hw,
+        base_model_bytes=10 * 10**9, n_layers=10,
+        kv_tokens_in_gpu=61440)
+
+    _expect(abs(base_only - 1_000_000.0) < 1.0,
+            "t18 base-only per-layer == 1 ms", f"got {base_only}")
+    _expect(abs(with_kv - 2_006_632.96) < 1.0,
+            "t18 +61,440 KV tokens adds their HBM bytes", f"got {with_kv}")
+    _expect(estimate_base_model_ns_per_layer(
+                total_batch=1, model=model, hw=hw,
+                base_model_bytes=10 * 10**9, n_layers=10,
+                kv_tokens_in_gpu=0) == base_only,
+            "t18 kv_tokens_in_gpu=0 preserves old behavior")
+
+
+# ----------------------------------------------------------------- t19
+
+def t19_cost_aware_kv_fraction() -> None:
+    """compute_kv_in_gpu_fraction balances Eq (7) vs Eq (8).
+
+    All cases use the A100 fixture (base 14 GB / 32 layers -> 226 us/layer
+    HBM floor) with one serving adapter on E3 (0 GPU bytes for LoRA).
+
+      (a) short KV (18k tokens): CXL attention (~72 us/layer across 4
+          devices) hides under the base floor -> duplicating any KV in GPU
+          only adds GPU time -> P* == 0.
+      (b) long KV (98,304 tokens): CXL side (~374 us/layer) exceeds the
+          base floor -> P* > 0, analytically ~0.12, memory unconstrained.
+      (c) tight memory (1 GB free): the unconstrained optimum exceeds the
+          cap -> P* == cap.
+      (d) no base info -> legacy greedy fill (== cap).
+    """
+    print("\n[t19] cost-aware KV duplication fraction")
+    model = ModelConfig(d=4096)
+    state = SystemState(adapters={1: Adapter(adapter_id=1, rank=8, batch=32)})
+    decisions = {1: Decision(strategy=Strategy.E3, cost_ns=0.0)}
+    kw = dict(n_layers=32, n_matrices=7,
+              total_batch=32, base_model_bytes=14 * 10**9)
+
+    p_short = compute_kv_in_gpu_fraction(
+        decisions, state, HW, model, {1: 18_000}, **kw)
+    _expect(p_short == 0.0,
+            "t19a short KV -> P == 0 (CXL hides under base)",
+            f"got {p_short}")
+
+    p_long = compute_kv_in_gpu_fraction(
+        decisions, state, HW, model, {1: 98_304}, **kw)
+    _expect(0.05 < p_long < 0.20,
+            "t19b long KV -> 0 < P < 0.2 (analytic ~0.12)",
+            f"got {p_long}")
+
+    hw_tight = replace(HW, gpu_mem_bytes=1 * 10**9)
+    kv_total_bytes = 2 * 4096 * 2 * 98_304 * 32
+    cap = (1 * 10**9) / kv_total_bytes
+    p_capped = compute_kv_in_gpu_fraction(
+        decisions, state, hw_tight, model, {1: 98_304}, **kw)
+    _expect(abs(p_capped - cap) < 1e-9,
+            "t19c tight memory -> P == cap",
+            f"got {p_capped}, cap {cap}")
+
+    p_legacy = compute_kv_in_gpu_fraction(
+        decisions, state, hw_tight, model, {1: 98_304},
+        n_layers=32, n_matrices=7)
+    _expect(abs(p_legacy - cap) < 1e-9,
+            "t19d no base info -> legacy greedy fill",
+            f"got {p_legacy}, cap {cap}")
+
+
 # ----------------------------------------------------------------- demo
 
 def demo() -> None:
@@ -468,6 +557,8 @@ def main() -> int:
     t15_pre_cache_greedy_by_temp()
     t16_pre_cache_reserves_serving()
     t17_moe_base_time()
+    t18_gpu_attention_charged()
+    t19_cost_aware_kv_fraction()
     demo()
     print(f"\n{_PASS} passed, {_FAIL} failed")
     return 0 if _FAIL == 0 else 1

@@ -50,12 +50,15 @@ system(s), and prints per-step + aggregate throughput.
 
 ```
 CPU-LoRA-Offload  <  Grace-Hopper  <  CLoRA-NoCXL  <  CLoRA
-       ~120              ~570            ~3,730        ~3,940   (7B avg tok/s, A100)
+       ~133              ~620            ~3,450        ~3,634   (7B avg tok/s, A100)
 ```
 
+(Numbers under the corrected attention accounting + GPU-memory-parity
+baseline caches; see RESULTS.md §4 methodology note.)
+
 The four-way comparison answers two reviewer questions cleanly:
-- **CLoRA vs CLoRA-NoCXL (~1.06×)**: the CXL interface itself adds ~6%
-- **CLoRA vs Grace-Hopper (~6.9×)**: NDP placement matters even with a coherent 450 GB/s CPU-GPU link
+- **CLoRA vs CLoRA-NoCXL (~1.05×)**: the CXL interface itself adds ~4–6%
+- **CLoRA vs Grace-Hopper (~5.9×)**: NDP placement matters even with a coherent 450 GB/s CPU-GPU link
 
 ---
 
@@ -142,8 +145,8 @@ Five components, all paper-section-marked:
 | `classify_adapters(...)` | §6.2 | three-way split (serving / hot / cold) |
 | `pre_cache_hot_adapters(...)` | §6.2 + Fig 10 | top-K hottest non-serving cached as E1 |
 | `TemperatureModel` | §6.2 | `+T_1` on request, mean-reverting decay |
-| `compute_kv_in_gpu_fraction(...)` | §5.2 | residual GPU memory → KV duplicate |
-| `estimate_base_model_ns_per_layer(...)` | not in paper, complement | `max(compute, HBM)` per layer |
+| `compute_kv_in_gpu_fraction(...)` | §5.2 + Eqs (7)–(9) | cost-aware P_KV: balances GPU-side vs CXL-side attention under the memory cap (0–16% in practice, cf. paper Fig 16) |
+| `estimate_base_model_ns_per_layer(...)` | not in paper, complement | `max(compute, HBM)` per layer, including the duplicated-KV attention share (Eq 7) |
 | `emit_step_json(...)`, `write_step_json(...)` | — | serialize decisions to disk |
 
 The four LoRA execution strategies (per-adapter):

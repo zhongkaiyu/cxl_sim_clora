@@ -184,7 +184,7 @@ running LoRA matmul; replaces CXL with PCIe.**
 | `L_pcie_setup` | 1000 | ns | per-DMA PCIe setup |
 | `L_kernel_launch` | 5000 | ns | CUDA kernel launch per LoRA op |
 | `L_cpu_gpu_offload` | 10000 | ns | compound GPU↔CPU round-trip overhead |
-| LRU adapter cache | 8 | GB | `--baseline-cache-gb` |
+| LRU adapter cache | 26 / 14 / 34 (GPU-memory parity with CLoRA) | GB | `--baseline-cache-gb` |
 | Fusion mode | `fused` | — | S-LoRA/PUNICA BGMV style |
 | Per-layer parallelism | enabled | — | `max(gpu_path, missed_path) + attn` |
 
@@ -197,7 +197,7 @@ GPU same as CLoRA. **Replaces NDP with GPU compute, PCIe with NVLink-C2C, host D
 | NVLink-C2C bandwidth | **450** | GB/s | NVIDIA: 900 GB/s bidirectional = 450 per direction |
 | `L_c2c_setup` | 500 | ns | lower than PCIe due to coherent access |
 | `L_kernel_launch` | 5000 | ns | CUDA kernel launch |
-| GPU LRU adapter cache | 8 | GB | `--gh-cache-gb` |
+| GPU LRU adapter cache | 26 / 14 / 34 (GPU-memory parity with CLoRA) | GB | `--gh-cache-gb` |
 | Fusion mode | `fused` | — | shared with CPU-LoRA-offload |
 | LoRA matmul on | **GPU** (312 TFLOPS) | — | key diff vs CPU-LoRA |
 
@@ -258,15 +258,32 @@ budget calculations correctly account for hot bytes consumed.
 
 Steady state (10 warmup + 10 measurement steps), batch = 32, A100 + 128 GB/s link.
 
+> **Methodology corrections (2026-06-12).** Two fixes relative to earlier
+> drafts of this table:
+> 1. **GPU-side attention is now charged (paper Eq 7).** Previously the
+>    KV-duplication policy greedily filled spare GPU memory (up to 100% of
+>    KV at batch 32) and the duplicated portion's attention work was never
+>    billed to the GPU, inflating long-KV CLoRA rows by 6–19%. The fraction
+>    is now chosen *cost-aware* (balancing Eq 7 vs Eq 8 under the memory
+>    cap, `compute_kv_in_gpu_fraction`), and lands at **0–16%** across all
+>    runs — consistent with paper Fig 16's 2–14%. Short-KV rows are
+>    unchanged: the optimizer keeps KV on the devices (P_KV = 0), whose
+>    time the C simulator already charged.
+> 2. **Baseline caches use GPU-memory parity.** Grace-Hopper and CPU-LoRA
+>    adapter caches now equal CLoRA's post-base GPU budget
+>    (`--baseline-cache-gb` / `--gh-cache-gb` = `--gpu-mem-gb`: 26/14/34 GB)
+>    instead of a fixed 8 GB. This improves those baselines by ~18–21% on
+>    skewed workloads (hit rate 38.8% → 67.5% on 7B Skewed).
+
 ### Llama2-7B (D=4096, n_layers=32, base=14 GB, free=26 GB)
 
 | Workload | CLoRA | CLoRA-NoCXL | Grace-Hopper | CPU-LoRA-Offload |
 |---|---:|---:|---:|---:|
-| Uniform | **4,422** | 4,165 | 796 | 168 |
-| Uniform-long | **3,323** | 3,176 | 236 | 51 |
-| Skewed | **4,422** | 4,165 | 988 | 207 |
-| Skewed-long | **3,576** | 3,406 | 254 | 55 |
-| **Average** | **3,936** | **3,728** | **569** | **120** |
+| Uniform | **4,423** | 4,165 | 819 | 173 |
+| Uniform-long | **2,796** | 2,690 | 237 | 52 |
+| Skewed | **4,423** | 4,165 | 1,162 | 250 |
+| Skewed-long | **2,893** | 2,780 | 260 | 58 |
+| **Average** | **3,634** | **3,450** | **620** | **133** |
 
 Units: tokens/second.
 
@@ -274,37 +291,36 @@ Units: tokens/second.
 
 | Workload | CLoRA | CLoRA-NoCXL | Grace-Hopper | CPU-LoRA-Offload |
 |---|---:|---:|---:|---:|
-| Uniform | **2,381** | 2,286 | 521 | 111 |
-| Uniform-long | **1,637** | 1,591 | 152 | 33 |
-| Skewed | **2,381** | 2,286 | 604 | 128 |
-| Skewed-long | **1,680** | 1,632 | 162 | 35 |
-| **Average** | **2,020** | **1,949** | **360** | **77** |
+| Uniform | **2,382** | 2,286 | 528 | 112 |
+| Uniform-long | **1,636** | 1,591 | 152 | 34 |
+| Skewed | **2,382** | 2,286 | 668 | 142 |
+| Skewed-long | **1,680** | 1,632 | 164 | 36 |
+| **Average** | **2,020** | **1,949** | **378** | **81** |
 
 ### Qwen3-30B-A3B MoE (D=2048, n_layers=48, active=6 GB, LoRA on attention + active experts = 28 matrices/layer)
 
 | Workload | CLoRA | CLoRA-NoCXL | Grace-Hopper | CPU-LoRA-Offload |
 |---|---:|---:|---:|---:|
-| Uniform | **9,822** | 8,142 | 352 | 69 |
-| Uniform-long | **3,167** | 2,969 | 197 | 41 |
-| Skewed | **10,123** | 8,348 | 386 | 75 |
-| Skewed-long | **3,317** | 3,101 | 216 | 44 |
-| **Average** | **6,607** | **5,640** | **288** | **57** |
+| Uniform | **7,674** | 6,609 | 362 | 71 |
+| Uniform-long | **3,157** | 2,960 | 199 | 41 |
+| Skewed | **8,555** | 7,252 | 506 | 97 |
+| Skewed-long | **3,318** | 3,102 | 253 | 53 |
+| **Average** | **5,676** | **4,981** | **330** | **65** |
 
 Units: tokens/second. Median of 3 trials per workload (the C event sim
 has small per-run variance from `srand(time(NULL))` in
 `flash.c::services_all_requests_using_channel`; median over a few runs
 removes the cold-start jitter). Raw JSON saved to
-`/tmp/moe_experts_results_final.json`.
+`script/results_grid.json` (regenerate with `script/regen_results.py`).
 
 > **Effect of expanding LoRA from attention-only to attention + active
-> experts:** Compared to an earlier run with `--n-matrices 7` (LoRA on
-> 7 dense-like matrices/layer, used internally as a reference), the
-> 28-matrix configuration adds 4× the LoRA weight footprint and
-> per-matrix kernel-launch count. CLoRA throughput drops 7% on short-KV
-> workloads and ~62% on long-KV workloads where LoRA traffic now
-> competes with attention KV traffic on the CXL link. CPU-LoRA drops
-> 63-68% on short and 37-39% on long. The 4-way ordering is preserved
-> across every cell.
+> experts:** the 28-matrix configuration (vs 7 for dense-like placement)
+> carries 4× the LoRA weight footprint and per-matrix kernel-launch
+> count. CLoRA absorbs this with modest losses (LoRA traffic competes
+> with attention KV traffic on the CXL link, visible on the long-KV
+> rows), while CPU-LoRA — which pays CPU compute, PCIe transfer, and
+> kernel launches per matrix — is hit far harder. The 4-way ordering is
+> preserved across every cell.
 
 ---
 
@@ -314,77 +330,78 @@ removes the cold-start jitter). Raw JSON saved to
 
 | Workload | CLoRA / NoCXL | CLoRA / Grace-Hopper | CLoRA / CPU-LoRA |
 |---|---:|---:|---:|
-| Uniform | 1.06× | **5.56×** | **26.32×** |
-| Uniform-long | 1.05× | **14.08×** | **65.16×** |
-| Skewed | 1.06× | **4.48×** | **21.36×** |
-| Skewed-long | 1.05× | **14.08×** | **65.02×** |
-| **Average** | **1.06×** | **6.92×** | **32.80×** |
+| Uniform | 1.06× | **5.40×** | **25.60×** |
+| Uniform-long | 1.04× | **11.78×** | **53.87×** |
+| Skewed | 1.06× | **3.81×** | **17.68×** |
+| Skewed-long | 1.04× | **11.14×** | **50.14×** |
+| **Average** | **1.05×** | **8.03×** | **36.82×** |
 
 ### Llama2-13B speedup ratios
 
 | Workload | CLoRA / NoCXL | CLoRA / Grace-Hopper | CLoRA / CPU-LoRA |
 |---|---:|---:|---:|
-| Uniform | 1.04× | **4.57×** | **21.45×** |
-| Uniform-long | 1.03× | **10.77×** | **49.61×** |
-| Skewed | 1.04× | **3.94×** | **18.60×** |
-| Skewed-long | 1.03× | **10.37×** | **48.00×** |
-| **Average** | **1.04×** | **5.61×** | **26.23×** |
+| Uniform | 1.04× | **4.51×** | **21.19×** |
+| Uniform-long | 1.03× | **10.73×** | **48.85×** |
+| Skewed | 1.04× | **3.56×** | **16.83×** |
+| Skewed-long | 1.03× | **10.27×** | **46.42×** |
+| **Average** | **1.04×** | **7.27×** | **33.32×** |
 
 ### Qwen3-30B-A3B MoE speedup ratios (LoRA on attention + active experts, 28 matrices/layer)
 
 | Workload | CLoRA / NoCXL | CLoRA / Grace-Hopper | CLoRA / CPU-LoRA |
 |---|---:|---:|---:|
-| Uniform | 1.21× | **27.90×** | **142.35×** |
-| Uniform-long | 1.07× | **16.08×** | **77.24×** |
-| Skewed | 1.21× | **26.23×** | **134.97×** |
-| Skewed-long | 1.07× | **15.36×** | **75.39×** |
-| **Average** | **1.17×** | **22.96×** | **115.41×** |
+| Uniform | 1.16× | **21.22×** | **107.93×** |
+| Uniform-long | 1.07× | **15.90×** | **76.62×** |
+| Skewed | 1.18× | **16.90×** | **88.47×** |
+| Skewed-long | 1.07× | **13.10×** | **62.72×** |
+| **Average** | **1.12×** | **16.78×** | **83.94×** |
 
 > **Ordering check:** The four-way ordering **CLoRA > NoCXL >
 > Grace-Hopper > CPU-LoRA** holds for every Qwen3-30B-A3B workload.
 
 **Key observations (Qwen3-30B-A3B with active-expert LoRA, n_matrices=28):**
 
-- CLoRA's win over NoCXL widens to **1.17×–1.21×** (vs ~5% on dense
+- CLoRA's win over NoCXL widens to **1.07×–1.18×** (vs ~4–6% on dense
   Llama2). With 28 matrices per layer × 48 layers, the per-step NoCXL
   kernel-relaunch overhead accumulates substantially.
-- CLoRA's win over CPU-LoRA reaches **75×–139×** — far larger than the
-  Llama2 results (26×–65×). With 4× the LoRA matrix count, every
+- CLoRA's win over CPU-LoRA reaches **63×–108×** — far larger than the
+  Llama2 results (17×–54×). With 4× the LoRA matrix count, every
   cache-missed adapter triggers 4× the CPU compute / PCIe traffic /
-  kernel launches, and the CPU's ~500 GFLOPS matmul cannot keep up.
-- CLoRA's win over Grace-Hopper grows to **15×–27×** (vs 5×–14× on
+  kernel launches, and the CPU's 200 GFLOPS matmul cannot keep up.
+- CLoRA's win over Grace-Hopper grows to **13×–21×** (vs 3.6×–12× on
   Llama2). NVLink-C2C at 450 GB/s is fast for the attention path but
   cannot match 4 × CXL-NDP devices' aggregate DRAM bandwidth when LoRA
   traffic quadruples.
-- Long-KV workloads compress CLoRA's absolute throughput (3,167 vs
-  9,595 on Uniform vs Uniform-long) because attention KV traffic over
-  the CXL link now competes with the larger LoRA-path traffic. CLoRA's
-  *relative* win however **decreases** on long workloads (from ~1.20×
-  to ~1.07× vs NoCXL) because the bottleneck shifts from kernel-launch
-  to link-bandwidth, where NoCXL and CLoRA pay the same cost.
+- Long-KV workloads compress CLoRA's absolute throughput (3,157 vs
+  7,674 on Uniform-long vs Uniform) because attention KV traffic over
+  the CXL link and device DRAM competes with the larger LoRA-path
+  traffic. CLoRA's *relative* win however **decreases** on long
+  workloads (from ~1.16–1.18× to ~1.07× vs NoCXL) because the
+  bottleneck shifts from kernel-launch to bandwidth, where NoCXL and
+  CLoRA pay the same cost.
 
 ### Adjacent ratios (each isolates one design axis)
 
 | Adjacent comparison | 7B avg | 13B avg | Qwen3-30B-A3B avg | what it isolates |
 |---|---:|---:|---:|---|
-| CLoRA / CLoRA-NoCXL | **1.06×** | **1.04×** | **1.17×** | CXL interface (load/store + read-compute) vs explicit DMA |
-| CLoRA-NoCXL / Grace-Hopper | **6.55×** | **5.41×** | **19.60×** | NDP cores adjacent to data vs GPU + fast link |
-| Grace-Hopper / CPU-LoRA | **4.74×** | **4.67×** | **5.03×** | GPU LoRA matmul vs CPU LoRA matmul |
+| CLoRA / CLoRA-NoCXL | **1.05×** | **1.04×** | **1.14×** | CXL interface (load/store + read-compute) vs explicit DMA |
+| CLoRA-NoCXL / Grace-Hopper | **5.57×** | **5.15×** | **15.10×** | NDP cores adjacent to data vs GPU + fast link |
+| Grace-Hopper / CPU-LoRA | **4.65×** | **4.67×** | **5.04×** | GPU LoRA matmul vs CPU LoRA matmul |
 
 > **Note on ratio computation:** All "avg" ratios above are computed as
 > `mean(System1) / mean(System2)` across the 4 workloads (not as the
 > arithmetic mean of per-workload ratios). The two methods disagree most
 > on the NoCXL/Grace-Hopper row because per-workload ratios vary widely
-> (5.2× on short workloads, 13.4× on long). Per-workload ratios are
+> (~4–5× on short workloads, ~11× on long). Per-workload ratios are
 > shown explicitly in the tables above this section; use those for
 > workload-specific claims.
 
 ### Story per pairing
 
-- **CLoRA vs NoCxl (~5%):** removing CXL.mem semantics costs only a few percent — most of CLoRA's win is *not* the interface
-- **NoCxl vs Grace-Hopper (~6×):** even with NVLink-C2C at 3.5× the CXL bandwidth, moving the LoRA matmul off the NDP devices is a massive loss
+- **CLoRA vs NoCxl (~4–6% dense, ~14% MoE):** removing CXL.mem semantics costs only a few percent — most of CLoRA's win is *not* the interface
+- **NoCxl vs Grace-Hopper (~5.2–5.6× dense, ~15× MoE):** even with NVLink-C2C at 3.5× the CXL bandwidth, moving the LoRA matmul off the NDP devices is a massive loss
 - **Grace-Hopper vs CPU-LoRA (~4.7×):** moving the matmul from CPU (200 GFLOPS) to GPU (312 TFLOPS) recovers most of what CPU offload loses
-- **CLoRA vs CPU-LoRA (~33×):** product of all three axes — useful as the headline number for the strawman comparison
+- **CLoRA vs CPU-LoRA (~27× on 7B):** product of all three axes — useful as the headline number for the strawman comparison
 
 ---
 
@@ -401,16 +418,20 @@ python3 script/clora_driver.py \
     --gpu-mem-gb 26 --base-model-gb 14 \
     --model-d 4096 --n-layers 32 \
     --gpu-compute-tflops 312 --gpu-mem-bw-gb 1935 --pcie-bw-gb 128 \
+    --baseline-cache-gb 26 --gh-cache-gb 26 \
     --top-k-hot 50 --seed 42 \
     --baseline all
 ```
+
+(`--baseline-cache-gb` / `--gh-cache-gb` are set to `--gpu-mem-gb` for
+GPU-memory parity; see the methodology note in §4.)
 
 Expected output (final lines):
 ```
 CLoRA           tokens=320  throughput=4,422.9 tokens/s
 CLoRA-NoCXL     tokens=320  throughput=4,165.0 tokens/s
-Grace-Hopper    tokens=320  throughput=796.x   tokens/s
-CPU-LoRA-Off    tokens=320  throughput=168.x   tokens/s
+Grace-Hopper    tokens=320  throughput=818.x   tokens/s
+CPU-LoRA-Off    tokens=320  throughput=172.x   tokens/s
 ```
 
 ### Other workloads — only `--dist`, `--n-hot`, `--kv-min`, `--kv-max` change:
@@ -425,13 +446,15 @@ CPU-LoRA-Off    tokens=320  throughput=168.x   tokens/s
 ### Llama2-13B — only these change:
 
 ```
---gpu-mem-gb 14 --base-model-gb 26 --model-d 5120 --n-layers 40
+--gpu-mem-gb 14 --base-model-gb 26 --model-d 5120 --n-layers 40 \
+--baseline-cache-gb 14 --gh-cache-gb 14
 ```
 
 ### Qwen3-30B-A3B MoE switch — only these flags differ from Llama2-7B:
 
 ```
---base-model-gb 60 --moe-active-base-gb 6 --model-d 2048 --n-layers 48 --gpu-mem-gb 34 --n-matrices 28
+--base-model-gb 60 --moe-active-base-gb 6 --model-d 2048 --n-layers 48 \
+--gpu-mem-gb 34 --n-matrices 28 --baseline-cache-gb 34 --gh-cache-gb 34
 ```
 
 - `--base-model-gb 60` declares the *total* base footprint (30B × FP16 = 60 GB).
@@ -446,35 +469,13 @@ CPU-LoRA-Off    tokens=320  throughput=168.x   tokens/s
 - All other CLoRA knobs (`--top-k-hot 50`, temperature, batch, seed)
   remain identical to the Llama2 runs.
 
-### Full 4×4 sweep one-liner
+### Full grid regeneration
 
-The sweep that generated this entire document:
+The sweep that generated this entire document (3 models × 4 workloads ×
+4 systems, median of 3 trials, parity caches):
 
 ```bash
-python3 - <<'PY'
-import subprocess, json
-HW = ["--gpu-compute-tflops", "312", "--gpu-mem-bw-gb", "1935", "--pcie-bw-gb", "128"]
-for D, NL, base, free in [(4096, 32, 14, 26), (5120, 40, 26, 14)]:
-    for dist, nad, kmin, kmax in [
-        ("uniform", 1000, 100, 1024),
-        ("uniform", 1000, 2048, 4096),
-        ("skewed",  1000, 100, 1024),
-        ("skewed",  1000, 2048, 4096),
-    ]:
-        cmd = ["python3", "script/clora_driver.py",
-               "--steps", "10", "--warmup-steps", "10", "--batch", "32",
-               "--n-adapters", str(nad), "--dist", dist, "--n-hot", "50",
-               "--kv-min", str(kmin), "--kv-max", str(kmax),
-               "--gpu-mem-gb", str(free), "--base-model-gb", str(base),
-               "--model-d", str(D), "--n-layers", str(NL),
-               "--top-k-hot", "50", "--seed", "42",
-               "--baseline", "all", *HW]
-        print(f"--- D={D} {dist} kv=[{kmin},{kmax}] ---")
-        out = subprocess.run(cmd, capture_output=True, text=True).stdout
-        for line in out.split("\n"):
-            if any(line.startswith(p) for p in ["CLoRA ", "CLoRA-NoCXL ", "Grace-Hopper ", "CPU-LoRA-Off "]):
-                print("  " + line)
-PY
+python3 script/regen_results.py     # writes script/results_grid.json
 ```
 
 ---
@@ -493,15 +494,17 @@ CLoRA  >  CLoRA-NoCXL  >  Grace-Hopper  >  CPU-LoRA-Offload
 
 | observation | expected? | matches? |
 |---|---|---|
-| CLoRA constant throughput across Uniform/Skewed | yes — HBM-bound regime at batch=32 | ✅ both 7B Uniform = 4422, 7B Skewed = 4422 |
-| Long-sequence reduces all throughputs | yes — KV cache reads dominate | ✅ Uniform 4422 → Uniform-long 3323 (25% drop on CLoRA) |
-| 13B ≈ 0.5× of 7B | yes — base model 26 vs 14 GB at same HBM | ✅ 7B avg 3936 → 13B avg 2020 (0.51×) |
-| Grace-Hopper / CPU-LoRA ≈ 4.7× | yes — 312 TFLOPS / 200 GFLOPS effective contribution | ✅ 4.7× on 7B avg, 4.67× on 13B |
-| CLoRA / NoCXL ≈ 1.05× | yes — 448 µs / ~7.2 ms = 6.2% overhead | ✅ measured 6% on 7B, 4% on 13B |
-| Grace-Hopper degrades 4× on long sequences (Uniform → Uniform-long) | yes — KV transfer over 450 GB/s C2C is the bottleneck | ✅ 7B 796 → 236 (3.4×); 13B 521 → 152 (3.4×) |
-| Qwen3-30B-A3B HBM-bound throughput cap | yes — `batch × HBM_BW / active_bytes` = 32 × 1935 / 6 ≈ **10,320 tokens/s** | ✅ matches CLoRA on Uniform / Skewed (short-KV) at small n_matrices; at n_matrices=28 LoRA traffic eats some headroom but Skewed still hits 10,123 |
-| Qwen3-30B-A3B `--n-matrices` ratio impact | yes — 28/7 = 4× LoRA traffic; CLoRA short-KV throughput should drop modestly, CPU-LoRA should drop much more | ✅ CLoRA Uniform 10,320 → 9,822 (−5%); CPU-LoRA Uniform 189 → 69 (−63.5%) |
-| Long-KV widens CLoRA gap at small n_matrices, narrows at large n_matrices | yes — link bandwidth becomes the shared bottleneck when LoRA + KV traffic compete | ✅ CLoRA/NoCXL: 1.07× on Qwen3 long-KV vs 1.21× short-KV |
+| CLoRA constant throughput across Uniform/Skewed | yes — HBM-bound regime at batch=32 | ✅ both 7B Uniform = 4,423, 7B Skewed = 4,423 |
+| 7B short-KV step time == base HBM floor | yes — 14 GB / 1935 GB/s = 7.235 ms; device-side attention (~2.2 ms) hides under it | ✅ measured step = 7.235 ms exactly |
+| Long-sequence reduces all throughputs | yes — KV cache reads dominate | ✅ Uniform 4,423 → Uniform-long 2,796 (37% drop on CLoRA) |
+| KV-duplication fraction in paper Fig 16's range (2–14%) | yes — cost-aware P_KV balances Eq 7 vs Eq 8 | ✅ 0% short-KV (CXL hides under base), 12–16% long-KV |
+| 13B ≈ 0.5–0.6× of 7B | yes — base model 26 vs 14 GB at same HBM | ✅ 7B avg 3,634 → 13B avg 2,020 (0.56×) |
+| Grace-Hopper / CPU-LoRA ≈ 4.7× | yes — 312 TFLOPS / 200 GFLOPS effective contribution | ✅ 4.65× on 7B avg, 4.67× on 13B |
+| CLoRA / NoCXL ≈ 1.05× | yes — 448 µs / ~7.2 ms = 6.2% overhead | ✅ measured 4–6% on dense Llama2 |
+| Grace-Hopper degrades ~3.5× on long sequences (Uniform → Uniform-long) | yes — KV transfer over 450 GB/s C2C is the bottleneck | ✅ 7B 819 → 237 (3.5×); 13B 528 → 152 (3.5×) |
+| Qwen3-30B-A3B respects the HBM-bound cap | yes — `batch × HBM_BW / active_bytes` = 32 × 1935 / 6 ≈ **10,320 tokens/s** upper bound | ✅ short-KV CLoRA reaches 7,674–8,555 (74–83% of the cap; the rest is device-side attention + LoRA traffic that no longer hides once charged) |
+| Qwen3-30B-A3B `--n-matrices` impact direction | yes — 28/7 = 4× LoRA traffic; CLoRA drops modestly, CPU-LoRA much more | ✅ CPU-LoRA suffers ~4× the relative loss of CLoRA |
+| Long-KV widens CLoRA gap at small n_matrices, narrows at large n_matrices | yes — bandwidth becomes the shared bottleneck when LoRA + KV traffic compete | ✅ CLoRA/NoCXL: 1.07× on Qwen3 long-KV vs 1.16–1.18× short-KV |
 
 ### Microbench-verified building blocks
 
@@ -516,11 +519,11 @@ The whole result rests on these primitives, each verified to the nanosecond:
 
 | suite | assertions | green? |
 |---|---:|---|
-| `test_clora_strategy.py` (cost model, Algorithm 1, hot/cold, MoE) | 38 | ✅ |
+| `test_clora_strategy.py` (cost model, Algorithm 1, hot/cold, MoE, Eq-7 attention accounting, cost-aware P_KV) | 45 | ✅ |
 | `test_baseline.py` (CPU-LoRA-Offload) | 31 | ✅ |
 | `test_baseline_no_cxl.py` (NoCxl overhead) | 9 | ✅ |
 | `test_baseline_grace_hopper.py` (Grace-Hopper) | 25 | ✅ |
-| **Total** | **103** | ✅ |
+| **Total** | **110** | ✅ |
 
 ---
 
@@ -528,13 +531,17 @@ The whole result rests on these primitives, each verified to the nanosecond:
 
 Across **48 measurement points** (4 workloads × 4 systems × 3 base
 models — Llama2-7B, Llama2-13B, Qwen3-30B-A3B MoE with LoRA on
-attention + active experts), the four-way ordering **CLoRA >
-CLoRA-NoCXL > Grace-Hopper > CPU-LoRA-Offload** holds without
-exception. On the dense Llama2 models the magnitudes decompose cleanly
-into three independent design axes (CXL interface ~5%, NDP placement
-~6×, GPU vs CPU compute ~4.7×); on the sparse Qwen3-30B-A3B MoE model
-with LoRA on 28 matrices/layer (4 attention + 3×8 active experts) the
-CXL-interface axis widens to ~1.17× and the NDP-placement axis widens
-to ~19×, because LoRA traffic now competes with the small active-base
-HBM read at the CXL link. Every parameter is sourced to the code;
-every result is reproducible with one driver invocation.
+attention + active experts), with attention fully charged on both the
+GPU and device side (§4 methodology note) and baseline caches at
+GPU-memory parity, the four-way ordering **CLoRA > CLoRA-NoCXL >
+Grace-Hopper > CPU-LoRA-Offload** holds without exception. On the dense
+Llama2 models the magnitudes decompose cleanly into three independent
+design axes (CXL interface ~4–6%, NDP placement ~5.2–5.6×, GPU vs CPU
+compute ~4.7×); on the sparse Qwen3-30B-A3B MoE model with LoRA on 28
+matrices/layer (4 attention + 3×8 active experts) the CXL-interface
+axis widens to ~1.14× and the NDP-placement axis widens to ~15×,
+because LoRA traffic now competes with the small active-base HBM read
+at the CXL link. The cost-aware KV-duplication policy lands at 0–16%
+of KV in GPU memory, consistent with paper Fig 16's 2–14%. Every
+parameter is sourced to the code; every result is reproducible with
+one driver invocation.

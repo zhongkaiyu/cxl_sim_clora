@@ -148,6 +148,11 @@ def make_state(reqs: List[Tuple[int, int]],
 
 _run_counter = 0
 
+# Optional override for the C sim's parameter file (config/parameters.conf by
+# default).  Set via --c-parameter-file; the sensitivity study uses this to
+# hand each sweep point its own conf.
+C_PARAMETER_FILE: str | None = None
+
 
 def run_c_sim(json_path: str) -> int:
     global _run_counter
@@ -158,8 +163,11 @@ def run_c_sim(json_path: str) -> int:
     # across re-runs of the driver in the same second.
     _run_counter += 1
     stamp = f"{os.getpid() % 100000:05d}_{_run_counter:06d}"
+    cmd = [BINARY, "--file", json_path, "--timestamp", stamp]
+    if C_PARAMETER_FILE:
+        cmd += ["--parameter", C_PARAMETER_FILE]
     proc = subprocess.run(
-        [BINARY, "--file", json_path, "--timestamp", stamp],
+        cmd,
         cwd=ROOT,
         stdout=subprocess.PIPE, stderr=subprocess.PIPE,
         text=True, timeout=300)
@@ -182,7 +190,11 @@ def run_smoke(args: argparse.Namespace) -> None:
     hw = replace(DEFAULT_HW,
                  gpu_compute=args.gpu_compute_tflops * 1e12,
                  gpu_mem_bw=args.gpu_mem_bw_gb * 1e9,
-                 gpu_mem_bytes=int(args.gpu_mem_gb * 10**9))
+                 gpu_mem_bytes=int(args.gpu_mem_gb * 10**9),
+                 cxl_compute=args.ndp_tflops * 1e12,
+                 cxl_dram_bw=args.cxl_dram_bw_gb * 1e9,
+                 cxl_link_bw=args.cxl_link_bw_gb * 1e9,
+                 cxl_latency=args.cxl_latency_ns)
     model = ModelConfig(d=args.model_d)
 
     # ---- baselines (independent toggles) ----
@@ -291,17 +303,29 @@ def run_smoke(args: argparse.Namespace) -> None:
         if args.moe_active_base_gb > 0:
             moe_kwargs["moe_active_base_bytes"] = int(
                 args.moe_active_base_gb * 1e9)
+
+        # KV duplication (paper Eqs 7-9): pick the fraction that balances the
+        # GPU-side attention cost against the CXL-side cost, capped by the GPU
+        # memory left over after the LoRA decisions.
+        total_kv_tokens = sum(kv_per_adapter.values())
+        kv_in_gpu_fraction = compute_kv_in_gpu_fraction(
+            decisions, state, hw, model, kv_per_adapter,
+            n_layers=args.n_layers, n_matrices=args.n_matrices,
+            total_batch=batch_total,
+            base_model_bytes=int(args.base_model_gb * 10**9),
+            **moe_kwargs,
+        )
+
+        # GPU busy time per layer = base model + its share of attention
+        # (the duplicated-KV portion). The C sim runs this as one NPU_COMPUTE
+        # in parallel with the CXL-side attention/LoRA requests (Eq 9).
         base_ns_per_layer = estimate_base_model_ns_per_layer(
             batch_total, model, hw,
             base_model_bytes=int(args.base_model_gb * 10**9),
             n_layers=args.n_layers,
+            kv_tokens_in_gpu=int(kv_in_gpu_fraction * total_kv_tokens),
             **moe_kwargs)
 
-        # KV duplication: after LoRA decisions, dedicate remaining GPU mem to KV
-        kv_in_gpu_fraction = compute_kv_in_gpu_fraction(
-            decisions, state, hw, model, kv_per_adapter,
-            n_layers=args.n_layers, n_matrices=args.n_matrices,
-        )
         payload = emit_step_json(
             "decode", model, hw, decisions, state,
             n_layers=args.n_layers, n_matrices=args.n_matrices,
@@ -537,7 +561,30 @@ def main() -> int:
                     help="Grace-Hopper: CUDA kernel launch overhead (ns)")
     ap.add_argument("--gh-cache-gb", type=float, default=8.0,
                     help="Grace-Hopper: GPU LoRA LRU cache budget (GB)")
+    # ---- reviewer-requested CLoRA hardware sensitivity knobs ----
+    # These feed the Python cost model (strategy selection, Eqs 1-9).  The C
+    # event sim reads its own copies from the parameter file; pass a matching
+    # --c-parameter-file so both layers see the same hardware.
+    ap.add_argument("--cxl-latency-ns", type=float, default=200.0,
+                    help="CXL link latency L_CXL in ns (paper Eq 8 uses "
+                         "2*L_CXL per attention round trip). Default 200.")
+    ap.add_argument("--cxl-link-bw-gb", type=float, default=128.0,
+                    help="CXL link bandwidth per device W_CXL in GB/s. "
+                         "Default 128 (CXL 3.1, paper Table 4).")
+    ap.add_argument("--ndp-tflops", type=float, default=2.0,
+                    help="NDP compute per CLoRA device C_CXL in FP16 TFLOPS. "
+                         "Default 2 (paper Table 4).")
+    ap.add_argument("--cxl-dram-bw-gb", type=float, default=1100.0,
+                    help="Device-internal DRAM bandwidth W_DRAM in GB/s. "
+                         "Default 1100 (paper Table 4).")
+    ap.add_argument("--c-parameter-file", type=str, default=None,
+                    help="Override the C sim's parameter file "
+                         "(default: config/parameters.conf). The sensitivity "
+                         "study generates one conf per sweep point.")
     args = ap.parse_args()
+    global C_PARAMETER_FILE
+    if args.c_parameter_file:
+        C_PARAMETER_FILE = os.path.abspath(args.c_parameter_file)
     run_smoke(args)
     return 0
 

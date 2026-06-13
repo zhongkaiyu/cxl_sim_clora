@@ -547,6 +547,13 @@ struct parameter_value{
     unsigned int chip_computing_power; // ssd每个chip内置pe的总算力，单位GOPS
     unsigned int npu_computing_power; // npu core内提供的算力，单位GOPs
 
+    /* NDP PE timing model selector.  0 (default) = legacy formula,
+     * (addr_num-1)*size/elem_size/GOPS, which collapses to ~1 ns for the
+     * addr_num==1 sub-requests CLoRA emits.  1 = ops-based: 2 MAC ops per
+     * element actually read from device DRAM.  Used by the reviewer
+     * sensitivity study on NDP core throughput. */
+    int ndp_compute_model;
+
     unsigned int dram_channel_num; // DRAM channel number of  each CXL device
     unsigned int dram_channel_bandwidth; // bandwidth of each DRAM channel in CXL device
 

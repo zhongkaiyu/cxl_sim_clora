@@ -1,0 +1,344 @@
+{
+  "cxl_latency": {
+    "title": "CXL link latency (added one-way switch latency, ns)",
+    "rows": [
+      {
+        "label": "+0",
+        "conf": {
+          "L_CXL_switch": 0
+        },
+        "driver_flags": [
+          "--cxl-latency-ns",
+          "200"
+        ],
+        "throughput": {
+          "Uniform": 4422.9,
+          "Uniform-long": 2795.7
+        }
+      },
+      {
+        "label": "+100",
+        "conf": {
+          "L_CXL_switch": 100
+        },
+        "driver_flags": [
+          "--cxl-latency-ns",
+          "300"
+        ],
+        "throughput": {
+          "Uniform": 4422.9,
+          "Uniform-long": 2796.8
+        }
+      },
+      {
+        "label": "+200",
+        "conf": {
+          "L_CXL_switch": 200
+        },
+        "driver_flags": [
+          "--cxl-latency-ns",
+          "400"
+        ],
+        "throughput": {
+          "Uniform": 4422.9,
+          "Uniform-long": 2796.9
+        }
+      },
+      {
+        "label": "+400",
+        "conf": {
+          "L_CXL_switch": 400
+        },
+        "driver_flags": [
+          "--cxl-latency-ns",
+          "600"
+        ],
+        "throughput": {
+          "Uniform": 4422.9,
+          "Uniform-long": 2845.0
+        }
+      },
+      {
+        "label": "+800",
+        "conf": {
+          "L_CXL_switch": 800
+        },
+        "driver_flags": [
+          "--cxl-latency-ns",
+          "1000"
+        ],
+        "throughput": {
+          "Uniform": 4422.9,
+          "Uniform-long": 2999.4
+        }
+      },
+      {
+        "label": "+1600",
+        "conf": {
+          "L_CXL_switch": 1600
+        },
+        "driver_flags": [
+          "--cxl-latency-ns",
+          "1800"
+        ],
+        "throughput": {
+          "Uniform": 4422.9,
+          "Uniform-long": 2990.8
+        }
+      }
+    ]
+  },
+  "cxl_bandwidth": {
+    "title": "CXL link bandwidth per device (GB/s)",
+    "rows": [
+      {
+        "label": "128",
+        "conf": {
+          "cxl_bandwidth": 128
+        },
+        "driver_flags": [
+          "--cxl-link-bw-gb",
+          "128"
+        ],
+        "throughput": {
+          "Uniform": 4422.9,
+          "Uniform-long": 2795.7
+        }
+      },
+      {
+        "label": "32",
+        "conf": {
+          "cxl_bandwidth": 32
+        },
+        "driver_flags": [
+          "--cxl-link-bw-gb",
+          "32"
+        ],
+        "throughput": {
+          "Uniform": 4422.9,
+          "Uniform-long": 2787.4
+        }
+      },
+      {
+        "label": "64",
+        "conf": {
+          "cxl_bandwidth": 64
+        },
+        "driver_flags": [
+          "--cxl-link-bw-gb",
+          "64"
+        ],
+        "throughput": {
+          "Uniform": 4422.9,
+          "Uniform-long": 2793.9
+        }
+      },
+      {
+        "label": "256",
+        "conf": {
+          "cxl_bandwidth": 256
+        },
+        "driver_flags": [
+          "--cxl-link-bw-gb",
+          "256"
+        ],
+        "throughput": {
+          "Uniform": 4422.9,
+          "Uniform-long": 2631.7
+        }
+      },
+      {
+        "label": "512",
+        "conf": {
+          "cxl_bandwidth": 512
+        },
+        "driver_flags": [
+          "--cxl-link-bw-gb",
+          "512"
+        ],
+        "throughput": {
+          "Uniform": 4422.9,
+          "Uniform-long": 2632.1
+        }
+      }
+    ]
+  },
+  "ndp_throughput": {
+    "title": "NDP core throughput per device (FP16 TFLOPS, ops-based PE model)",
+    "rows": [
+      {
+        "label": "2.0 (legacy PE model)",
+        "conf": {},
+        "driver_flags": [
+          "--ndp-tflops",
+          "2.0"
+        ],
+        "throughput": {
+          "Uniform": 4422.9,
+          "Uniform-long": 2795.7
+        }
+      },
+      {
+        "label": "2.0",
+        "conf": {
+          "chip_computing_power": 2000,
+          "ndp_compute_model": 1
+        },
+        "driver_flags": [
+          "--ndp-tflops",
+          "2.0"
+        ],
+        "throughput": {
+          "Uniform": 4422.9,
+          "Uniform-long": 2775.4
+        }
+      },
+      {
+        "label": "0.25",
+        "conf": {
+          "chip_computing_power": 250,
+          "ndp_compute_model": 1
+        },
+        "driver_flags": [
+          "--ndp-tflops",
+          "0.25"
+        ],
+        "throughput": {
+          "Uniform": 3909.2,
+          "Uniform-long": 1558.1
+        }
+      },
+      {
+        "label": "0.5",
+        "conf": {
+          "chip_computing_power": 500,
+          "ndp_compute_model": 1
+        },
+        "driver_flags": [
+          "--ndp-tflops",
+          "0.5"
+        ],
+        "throughput": {
+          "Uniform": 4422.9,
+          "Uniform-long": 2178.5
+        }
+      },
+      {
+        "label": "1.0",
+        "conf": {
+          "chip_computing_power": 1000,
+          "ndp_compute_model": 1
+        },
+        "driver_flags": [
+          "--ndp-tflops",
+          "1.0"
+        ],
+        "throughput": {
+          "Uniform": 4422.9,
+          "Uniform-long": 2800.4
+        }
+      },
+      {
+        "label": "4.0",
+        "conf": {
+          "chip_computing_power": 4000,
+          "ndp_compute_model": 1
+        },
+        "driver_flags": [
+          "--ndp-tflops",
+          "4.0"
+        ],
+        "throughput": {
+          "Uniform": 4422.9,
+          "Uniform-long": 2650.9
+        }
+      },
+      {
+        "label": "8.0",
+        "conf": {
+          "chip_computing_power": 8000,
+          "ndp_compute_model": 1
+        },
+        "driver_flags": [
+          "--ndp-tflops",
+          "8.0"
+        ],
+        "throughput": {
+          "Uniform": 4422.9,
+          "Uniform-long": 2655.5
+        }
+      }
+    ]
+  },
+  "ndp_buffer": {
+    "title": "NDP controller buffer size (bytes; 128 B per in-flight request)",
+    "rows": [
+      {
+        "label": "1024 (8 reqs)",
+        "conf": {
+          "cxlctrl_buf_size": 1024
+        },
+        "driver_flags": [],
+        "throughput": {
+          "Uniform": 4422.9,
+          "Uniform-long": 2795.7
+        }
+      },
+      {
+        "label": "128 (1 reqs)",
+        "conf": {
+          "cxlctrl_buf_size": 128
+        },
+        "driver_flags": [],
+        "throughput": {
+          "Uniform": 4422.9,
+          "Uniform-long": 2756.0
+        }
+      },
+      {
+        "label": "256 (2 reqs)",
+        "conf": {
+          "cxlctrl_buf_size": 256
+        },
+        "driver_flags": [],
+        "throughput": {
+          "Uniform": 4422.9,
+          "Uniform-long": 2802.1
+        }
+      },
+      {
+        "label": "512 (4 reqs)",
+        "conf": {
+          "cxlctrl_buf_size": 512
+        },
+        "driver_flags": [],
+        "throughput": {
+          "Uniform": 4422.9,
+          "Uniform-long": 2800.1
+        }
+      },
+      {
+        "label": "2048 (16 reqs)",
+        "conf": {
+          "cxlctrl_buf_size": 2048
+        },
+        "driver_flags": [],
+        "throughput": {
+          "Uniform": 4422.9,
+          "Uniform-long": 2784.7
+        }
+      },
+      {
+        "label": "4096 (32 reqs)",
+        "conf": {
+          "cxlctrl_buf_size": 4096
+        },
+        "driver_flags": [],
+        "throughput": {
+          "Uniform": 4422.9,
+          "Uniform-long": 2761.8
+        }
+      }
+    ]
+  }
+}

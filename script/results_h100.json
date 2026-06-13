@@ -1,0 +1,95 @@
+{
+  "hw_note": "H100 SXM 80GB (989 TFLOPS FP16 dense, 3350 GB/s HBM3)",
+  "grid": {
+    "Llama2-7B": {
+      "Uniform": {
+        "CLoRA": 7657.1,
+        "NoCXL": 6915.8,
+        "GraceHopper": 886.8,
+        "CPULoRA": 187.0,
+        "kv_in_gpu_pct_mean": 0.0
+      },
+      "Uniform-long": {
+        "CLoRA": 3447.2,
+        "NoCXL": 3288.5,
+        "GraceHopper": 241.7,
+        "CPULoRA": 52.9,
+        "kv_in_gpu_pct_mean": 28.4
+      },
+      "Skewed": {
+        "CLoRA": 7657.1,
+        "NoCXL": 6915.8,
+        "GraceHopper": 1187.5,
+        "CPULoRA": 250.7,
+        "kv_in_gpu_pct_mean": 0.0
+      },
+      "Skewed-long": {
+        "CLoRA": 3566.1,
+        "NoCXL": 3396.5,
+        "GraceHopper": 262.6,
+        "CPULoRA": 57.7,
+        "kv_in_gpu_pct_mean": 28.4
+      }
+    },
+    "Llama2-13B": {
+      "Uniform": {
+        "CLoRA": 4123.1,
+        "NoCXL": 3845.6,
+        "GraceHopper": 551.6,
+        "CPULoRA": 117.3,
+        "kv_in_gpu_pct_mean": 0.0
+      },
+      "Uniform-long": {
+        "CLoRA": 2084.1,
+        "NoCXL": 2010.8,
+        "GraceHopper": 153.6,
+        "CPULoRA": 33.7,
+        "kv_in_gpu_pct_mean": 25.6
+      },
+      "Skewed": {
+        "CLoRA": 4123.1,
+        "NoCXL": 3845.6,
+        "GraceHopper": 784.6,
+        "CPULoRA": 167.5,
+        "kv_in_gpu_pct_mean": 0.0
+      },
+      "Skewed-long": {
+        "CLoRA": 2175.0,
+        "NoCXL": 2095.3,
+        "GraceHopper": 168.8,
+        "CPULoRA": 37.3,
+        "kv_in_gpu_pct_mean": 25.5
+      }
+    },
+    "Qwen3-30B-A3B": {
+      "Uniform": {
+        "CLoRA": 9367.2,
+        "NoCXL": 7827.4,
+        "GraceHopper": 371.3,
+        "CPULoRA": 72.8,
+        "kv_in_gpu_pct_mean": 0.9
+      },
+      "Uniform-long": {
+        "CLoRA": 4163.4,
+        "NoCXL": 3828.7,
+        "GraceHopper": 200.4,
+        "CPULoRA": 41.6,
+        "kv_in_gpu_pct_mean": 35.1
+      },
+      "Skewed": {
+        "CLoRA": 10662.2,
+        "NoCXL": 8711.6,
+        "GraceHopper": 646.5,
+        "CPULoRA": 123.7,
+        "kv_in_gpu_pct_mean": 0.3
+      },
+      "Skewed-long": {
+        "CLoRA": 4685.3,
+        "NoCXL": 4265.6,
+        "GraceHopper": 270.6,
+        "CPULoRA": 56.5,
+        "kv_in_gpu_pct_mean": 35.0
+      }
+    }
+  }
+}

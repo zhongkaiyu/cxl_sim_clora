@@ -400,23 +400,34 @@ Paper Figure 16 reports 2–14% duplicated in practice.
 
 ```python
 def compute_kv_in_gpu_fraction(decisions, state, hw, model, kv_tokens_per_adapter,
-                               *, n_layers, n_matrices):
-    total_kv_tokens = sum(kv_tokens_per_adapter.values())
-    kv_total_bytes = 2 * D * S * total_kv_tokens * n_layers   # K + V across all layers
+                               *, n_layers, n_matrices,
+                               total_batch, base_model_bytes,
+                               moe_active_base_bytes=None):
+    # memory cap: whatever GPU memory the LoRA decisions left over
+    free  = max(0, hw.gpu_mem_bytes - lora_bytes)          # as before
+    p_max = min(free, kv_total_bytes) / kv_total_bytes
 
-    lora_bytes = 0
-    # Serving adapters: whatever strategy they picked consumes that many bytes
-    for aid, dec in decisions.items():
-        lora_bytes += gpu_mem_for(dec.strategy, state.adapters[aid], model, ...)
-    # Hot-precached adapters: a_in_gpu / b_in_gpu flags set
-    for aid, a in state.adapters.items():
-        if aid not in decisions:
-            lora_bytes += state.adapter_gpu_bytes(aid, model, ...)
-
-    free = max(0, hw.gpu_mem_bytes - lora_bytes)
-    duplicated = min(free, kv_total_bytes)
-    return duplicated / kv_total_bytes
+    # cost-aware choice (Eqs 7-9): duplicated KV is NOT free -- it adds
+    # P-proportional HBM bytes + FLOPs to the GPU's per-layer roofline,
+    # while the devices' share shrinks with (1 - P). Both sides run in
+    # parallel, so pick P minimizing
+    #     max( T_GPU_layer(P), T_ATT_CXL_layer(P) )   for P in [0, p_max]
+    # via a 200-point grid scan (ties -> smaller P).
 ```
+
+The chosen fraction lands at **0% on short-KV** (the device-side
+attention hides under the base-model HBM floor, so duplication only
+adds GPU time) and **12–16% on long-KV** workloads — consistent with
+paper Fig 16's 2–14%. The duplicated share's GPU cost is then charged
+through `estimate_base_model_ns_per_layer(kv_tokens_in_gpu=...)`, which
+folds Eq (7)'s `4·D·K` FLOPs and `2·D·S·K` HBM bytes into the per-layer
+roofline that becomes the C-sim's `NPU_COMPUTE` duration.
+
+> Earlier drafts used a greedy fill (`min(free, kv_total) / kv_total`),
+> which reached 100% at batch 32 *and never billed the GPU for the
+> duplicated share's attention* — inflating long-KV throughput by
+> 6–19%. The greedy path survives only as a fallback when
+> `base_model_bytes` is not supplied (used by some unit tests).
 
 ### Why this ordering matters
 

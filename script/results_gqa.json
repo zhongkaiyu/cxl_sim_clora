@@ -1,0 +1,35 @@
+{
+  "hw_note": "Llama3-8B (GQA: 32 Q heads / 8 KV heads -> 4x smaller KV, emulated by 4x fewer KV tokens), A100 40GB",
+  "grid": {
+    "Llama3-8B": {
+      "Uniform": {
+        "CLoRA": 3870.0,
+        "NoCXL": 3671.1,
+        "GraceHopper": 1414.8,
+        "CPULoRA": 288.1,
+        "kv_in_gpu_pct_mean": 0.0
+      },
+      "Uniform-long": {
+        "CLoRA": 3870.0,
+        "NoCXL": 3671.1,
+        "GraceHopper": 678.0,
+        "CPULoRA": 144.3,
+        "kv_in_gpu_pct_mean": 0.0
+      },
+      "Skewed": {
+        "CLoRA": 3870.0,
+        "NoCXL": 3671.1,
+        "GraceHopper": 2361.7,
+        "CPULoRA": 526.2,
+        "kv_in_gpu_pct_mean": 0.0
+      },
+      "Skewed-long": {
+        "CLoRA": 3870.0,
+        "NoCXL": 3671.1,
+        "GraceHopper": 853.0,
+        "CPULoRA": 195.6,
+        "kv_in_gpu_pct_mean": 0.0
+      }
+    }
+  }
+}

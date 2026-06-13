@@ -364,16 +364,29 @@ def compute_kv_in_gpu_fraction(decisions: Dict[int, "Decision"],
                                kv_tokens_per_adapter: Dict[int, int],
                                *,
                                n_layers: int = 32,
-                               n_matrices: int = 7) -> float:
-    """Paper §5.2: after LoRA caching decisions, dedicate any remaining GPU
-    memory to duplicating part of the KV cache. Returns the fraction of total
-    KV cache duplicated in GPU.
+                               n_matrices: int = 7,
+                               total_batch: int = 0,
+                               base_model_bytes: int = 0,
+                               moe_active_base_bytes: int = None) -> float:
+    """Paper §5.2 + Eqs (7)-(9): choose the fraction P_KV of the KV cache to
+    duplicate in GPU memory.
 
-        gpu_free = gpu_mem_bytes - sum_a gpu_mem_for(strategy_a, a)
-        kv_total = 2 * D * S * sum_a kv_tokens_a * n_layers
-        fraction = min(gpu_free, kv_total) / kv_total
+    The GPU's share of attention is NOT free -- it adds P_KV-proportional HBM
+    reads and FLOPs to the GPU's per-layer roofline (Eq 7), while the CXL
+    devices' share shrinks with (1 - P_KV) (Eq 8). Since the two sides run in
+    parallel (Eq 9), the best P_KV minimizes
 
-    Used by the driver to set the C-sim's kv_in_gpu_fraction field.
+        T(P) = max( T_GPU_layer(P), T_ATT_CXL_layer(P) )
+
+    subject to the memory cap  P <= gpu_free / kv_total_bytes.
+
+    With 4 devices the aggregate device DRAM bandwidth usually beats the
+    GPU's leftover HBM bandwidth, so P* is small (0 when the CXL side already
+    hides under base compute) -- consistent with the 2-14% reported in paper
+    Fig 16, and unlike a greedy fill which can reach 100% at small batch.
+
+    Backward compatibility: when ``base_model_bytes`` is not given (<= 0),
+    falls back to the legacy greedy fill  min(free, kv_total) / kv_total.
     """
     if not kv_tokens_per_adapter:
         return 0.0
@@ -400,8 +413,44 @@ def compute_kv_in_gpu_fraction(decisions: Dict[int, "Decision"],
                                               n_matrices=n_matrices)
 
     free = max(0, hw.gpu_mem_bytes - lora_bytes)
-    duplicated = min(free, kv_total_bytes)
-    return duplicated / kv_total_bytes
+    p_max = min(free, kv_total_bytes) / kv_total_bytes
+
+    if base_model_bytes <= 0:
+        # Legacy greedy fill (kept for callers that don't supply base info).
+        return p_max
+
+    D, S, K = model.d, model.s_dtype, total_kv_tokens
+    B = max(total_batch, 0)
+    n_dev = max(hw.n_cxl, 1)
+
+    # GPU per-layer roofline components (Eq 7 folded into the base roofline)
+    hbm_bytes_total = (moe_active_base_bytes
+                       if moe_active_base_bytes is not None
+                       else base_model_bytes)
+    base_c = _ns_compute(24.0 * D * D * B, hw.gpu_compute)
+    base_h = _ns_transfer(hbm_bytes_total / max(n_layers, 1), hw.gpu_mem_bw)
+    attn_c = _ns_compute(4.0 * D * K, hw.gpu_compute)        # at P = 1
+    attn_h = _ns_transfer(2 * D * S * K, hw.gpu_mem_bw)      # at P = 1
+
+    # CXL per-layer attention components (Eq 8), at P = 0
+    cxl_unit = max(_ns_compute(4.0 * D * K, hw.cxl_compute * n_dev),
+                   _ns_transfer(2 * D * S * K, hw.cxl_dram_bw * n_dev))
+    cxl_link = 2 * hw.cxl_latency + _ns_transfer(2 * D * B * S, hw.cxl_link_bw)
+
+    def step_attn_ns(p: float) -> float:
+        t_gpu = max(base_c + p * attn_c, base_h + p * attn_h)
+        t_cxl = (1.0 - p) * cxl_unit + cxl_link
+        return max(t_gpu, t_cxl)
+
+    # 1-D grid search over [0, p_max]; ties prefer smaller P (frees memory).
+    best_p, best_t = 0.0, step_attn_ns(0.0)
+    steps = 200
+    for i in range(1, steps + 1):
+        p = p_max * i / steps
+        t = step_attn_ns(p)
+        if t < best_t - 1e-9:
+            best_p, best_t = p, t
+    return best_p
 
 
 # -------------------------------------------------------- §6.2 temperature
@@ -454,20 +503,27 @@ def estimate_base_model_ns_per_layer(total_batch: int,
                                      *,
                                      base_model_bytes: int = 14 * 10**9,
                                      n_layers: int = 32,
-                                     moe_active_base_bytes: int = None) -> float:
-    """Per-decoder-layer base-model time in ns.
+                                     moe_active_base_bytes: int = None,
+                                     kv_tokens_in_gpu: int = 0) -> float:
+    """Per-decoder-layer GPU busy time in ns (base model + GPU-side attention).
 
     Decode is HBM-bound at small batches and compute-bound at large ones:
     every layer must load its full weight slice from HBM regardless of batch,
     while compute scales linearly with batch.
 
-        compute_ns  = 24 * D^2 * batch / C_GPU            (FLOPs / FLOPS * 1e9)
-        hbm_ns      = (base_bytes / n_layers) / W_GPU     (B / B/s * 1e9)
+        compute_ns  = (24 D^2 B + 4 D K_gpu) / C_GPU       (FLOPs / FLOPS * 1e9)
+        hbm_ns      = (base_bytes/n_layers + 2 D S K_gpu) / W_GPU
         per_layer   = max(compute_ns, hbm_ns)
 
     The 24 * D^2 coefficient covers Q/K/V/O (8 * D^2) and FFN G/U/output
     (3 * 2 * D * FFN_DIM ~ 16 * D^2 for FFN_DIM ~ 2.7 D). ``base_model_bytes``
     defaults to Llama2-7B in FP16. Override for 13B (~26 GB) or 8B (~16 GB).
+
+    ``kv_tokens_in_gpu`` is the per-layer token count of the KV-cache portion
+    duplicated in GPU memory (P_KV * total KV tokens). Its attention work --
+    paper Eq (7): 4*D*K FLOPs and 2*D*S*K HBM bytes per layer -- rides the
+    same per-layer roofline as the base model because it competes for the
+    same HBM bandwidth and SMs. Default 0 preserves the old behavior.
 
     For Mixture-of-Experts (MoE) base models, only a subset of expert weights
     are activated per token, so the HBM read per layer is the *active*
@@ -481,11 +537,14 @@ def estimate_base_model_ns_per_layer(total_batch: int,
     """
     if total_batch <= 0 or hw.gpu_compute <= 0 or hw.gpu_mem_bw <= 0:
         return 0.0
-    compute_ns = 24.0 * model.d * model.d * total_batch / hw.gpu_compute * 1e9
+    K = max(kv_tokens_in_gpu, 0)
+    compute_ns = (24.0 * model.d * model.d * total_batch
+                  + 4.0 * model.d * K) / hw.gpu_compute * 1e9
     hbm_bytes_total = (moe_active_base_bytes
                        if moe_active_base_bytes is not None
                        else base_model_bytes)
-    bytes_per_layer = hbm_bytes_total / max(n_layers, 1)
+    bytes_per_layer = (hbm_bytes_total / max(n_layers, 1)
+                       + 2 * model.d * model.s_dtype * K)
     hbm_ns = bytes_per_layer / hw.gpu_mem_bw * 1e9
     return max(compute_ns, hbm_ns)
 

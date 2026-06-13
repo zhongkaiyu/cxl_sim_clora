@@ -502,8 +502,10 @@ struct parameter_value *load_parameters(char parameter_file[30])
             sscanf(buf + next_eql,"%d",&p->gpu_channel_number); 
         }else if((res_eql=strcmp(buf,"cxl_channel_number")) ==0){
             sscanf(buf + next_eql,"%d",&p->cxl_channel_number); \
+        }else if((res_eql=strcmp(buf,"ndp_compute_model")) ==0){
+            sscanf(buf + next_eql,"%d",&p->ndp_compute_model);
         }else if((res_eql=strcmp(buf,"cxlctrl_buf_size")) ==0){
-            sscanf(buf + next_eql,"%d",&p->cxlctrl_buf_size); 
+            sscanf(buf + next_eql,"%d",&p->cxlctrl_buf_size);
         }else if((res_eql=strcmp(buf,"sub_req_inst_size")) ==0){
             sscanf(buf + next_eql,"%d",&p->sub_req_inst_size); 
         }else if((res_eql=strcmp(buf,"die number")) ==0){

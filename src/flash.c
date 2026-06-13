@@ -1737,7 +1737,20 @@ Status go_one_step_in_cxlctrl(struct cxl_switch_device_info * ssd, struct sub_re
             sub->current_time=ssd->current_time;
             sub->current_state=SR_CXLCTRL_RC_COMPUTE;
             sub->next_state=SR_CXLCTRL_RC_DATA_TRANSFER;
-            sub->next_state_predict_time = ssd->current_time + ((sub->addr_num-1) * sub->p_addr[0]->size / (ssd->parameter->model_characteristics.data_type / 8) ) / ssd->parameter->chip_computing_power;//操作数除以算力
+            if (ssd->parameter->ndp_compute_model == 1) {
+                /* ops-based PE model: 2 ops (MAC) per element read from
+                 * device DRAM; chip_computing_power is GOPS == ops/ns */
+                int64_t read_data_size = 0;
+                for (int i = 0; i < sub->addr_num; i++) {
+                    read_data_size += sub->p_addr[i]->size;
+                }
+                int64_t elements = read_data_size /
+                    (ssd->parameter->model_characteristics.data_type / 8);
+                sub->next_state_predict_time = ssd->current_time +
+                    2 * elements / ssd->parameter->chip_computing_power;
+            } else {
+                sub->next_state_predict_time = ssd->current_time + ((sub->addr_num-1) * sub->p_addr[0]->size / (ssd->parameter->model_characteristics.data_type / 8) ) / ssd->parameter->chip_computing_power;//操作数除以算力
+            }
             if (sub->next_state_predict_time<=ssd->current_time)  sub->next_state_predict_time=ssd->current_time+1;
 
             ssd->bottom_channel_head[location->channel].cxl_device->chip_head[location->chip].pe->current_state=PE_COMPUTE;
