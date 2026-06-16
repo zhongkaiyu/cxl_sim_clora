@@ -20,6 +20,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import math
 import os
 import random
 import re
@@ -80,21 +81,66 @@ DEFAULT_MODEL = ModelConfig(d=4096)
 
 RANK_CHOICES = [8, 16, 32, 64, 128]  # paper §7.1
 
+# LMSYS-Chat-1M adapter popularity (the real Chatbot Arena trace CLoRA/S-LoRA
+# downsample). Top shares are from LMSYS-Chat-1M Table 4 "All Convos"
+# (fraction of 1M conversations): Vicuna-13B ~49%, Alpaca-13B ~6%,
+# Vicuna-33B ~3%, Llama-2-13B-chat ~3%, GPT-3.5 ~0.76%, GPT-4 ~0.73%,
+# Claude-2 ~0.22%. The remaining adapters form a power-law long tail filling
+# the residual mass. One dominant adapter + steep tail (NOT the synthetic
+# 80/20-over-50 rule, which is only defined for the 1000-adapter Skewed set).
+_LMSYS_TOP_SHARES = [0.49, 0.06, 0.03, 0.03, 0.0076, 0.0073, 0.0022]
+LMSYS_MAX_PER_ADAPTER = 256   # paper §5.1: per-adapter batch B typically 0-256
+
+
+def build_lmsys_weights(n_adapters: int = 25) -> List[float]:
+    """25-adapter LMSYS popularity: 7 measured head shares + power-law tail."""
+    top = list(_LMSYS_TOP_SHARES)[:n_adapters]
+    head = sum(top)
+    n_tail = max(0, n_adapters - len(top))
+    if n_tail:
+        raw = [1.0 / (k + 1) for k in range(1, n_tail + 1)]  # zipf-ish decay
+        s = sum(raw)
+        top += [(1.0 - head) * r / s for r in raw]
+    tot = sum(top)
+    return [w / tot for w in top]
+
 
 def _sample_adapter(n_adapters: int, dist: str,
-                    hot_ids: List[int], rng: random.Random) -> int:
+                    hot_ids: List[int], rng: random.Random,
+                    weights: List[float] | None = None) -> int:
     """Pick one adapter id per request.
 
-    ``dist`` is "uniform" or "skewed". For skewed, 80% of requests are routed
-    to one of ``hot_ids`` (paper §7.1: 50 hot adapters); the rest are uniform
-    over the remaining adapters.
+    ``dist`` is "uniform", "skewed", or "lmsys". For skewed, 80% of requests
+    are routed to one of ``hot_ids`` (paper §7.1: 50 hot adapters). For lmsys,
+    sample by the real Chatbot Arena popularity ``weights``.
     """
     if dist == "uniform":
         return rng.randrange(n_adapters)
+    if dist == "lmsys":
+        return rng.choices(range(n_adapters), weights=weights, k=1)[0]
     # skewed
     if hot_ids and rng.random() < 0.8:
         return rng.choice(hot_ids)
     return rng.randrange(n_adapters)
+
+
+def _sample_kv(kv_range: Tuple[int, int], kv_dist: str,
+               kv_mean: float, kv_sigma: float, rng: random.Random) -> int:
+    """Per-request context length. uniform[lo,hi] or truncated lognormal.
+
+    The lognormal is parameterized so the pre-truncation mean equals
+    ``kv_mean``; rejection-sampling onto [lo,hi] gives the right-skewed
+    LMSYS profile (Llama2-tokenizer means: input 69.5, output 214.5).
+    """
+    lo, hi = kv_range
+    if kv_dist == "uniform":
+        return rng.randint(lo, hi)
+    mu = math.log(max(kv_mean, 1.0)) - kv_sigma * kv_sigma / 2.0
+    for _ in range(200):
+        v = int(round(math.exp(rng.gauss(mu, kv_sigma))))
+        if lo <= v <= hi:
+            return v
+    return min(max(lo, int(kv_mean)), hi)
 
 
 def gen_step(n_adapters: int, batch_size: int,
@@ -102,12 +148,27 @@ def gen_step(n_adapters: int, batch_size: int,
              dist: str,
              hot_ids: List[int],
              rng: random.Random,
-             ranks: Dict[int, int]) -> List[Tuple[int, int]]:
-    """Return [(adapter_id, kv_tokens), ...] for one decode step."""
+             ranks: Dict[int, int],
+             weights: List[float] | None = None,
+             kv_dist: str = "uniform",
+             kv_mean: float = 0.0,
+             kv_sigma: float = 0.0) -> List[Tuple[int, int]]:
+    """Return [(adapter_id, kv_tokens), ...] for one decode step.
+
+    For lmsys, per-adapter batch is capped at LMSYS_MAX_PER_ADAPTER (paper
+    §5.1: B_ij in 0-256); requests for a saturated adapter are re-sampled.
+    """
     out = []
+    counts: Dict[int, int] = defaultdict(int)
     for _ in range(batch_size):
-        aid = _sample_adapter(n_adapters, dist, hot_ids, rng)
-        kv = rng.randint(kv_range[0], kv_range[1])
+        aid = _sample_adapter(n_adapters, dist, hot_ids, rng, weights)
+        if dist == "lmsys":
+            tries = 0
+            while counts[aid] >= LMSYS_MAX_PER_ADAPTER and tries < 50:
+                aid = _sample_adapter(n_adapters, dist, hot_ids, rng, weights)
+                tries += 1
+        counts[aid] += 1
+        kv = _sample_kv(kv_range, kv_dist, kv_mean, kv_sigma, rng)
         out.append((aid, kv))
         if aid not in ranks:
             ranks[aid] = rng.choice(RANK_CHOICES)
@@ -254,6 +315,8 @@ def run_smoke(args: argparse.Namespace) -> None:
     n_hot = min(args.n_hot, args.n_adapters)
     hot_ids: List[int] = rng.sample(range(args.n_adapters), n_hot) \
         if args.dist == "skewed" else []
+    lmsys_weights: List[float] | None = (
+        build_lmsys_weights(args.n_adapters) if args.dist == "lmsys" else None)
     total_tokens = 0
     total_ns = 0
     per_step_log: List[dict] = []
@@ -279,7 +342,10 @@ def run_smoke(args: argparse.Namespace) -> None:
         is_warmup = step < warmup_steps
         reqs = gen_step(args.n_adapters, args.batch,
                         (args.kv_min, args.kv_max),
-                        args.dist, hot_ids, rng, ranks)
+                        args.dist, hot_ids, rng, ranks,
+                        weights=lmsys_weights,
+                        kv_dist=args.kv_dist,
+                        kv_mean=args.kv_mean, kv_sigma=args.kv_sigma)
         # apply temperature bump on each arriving request
         for aid, _ in reqs:
             temp_model.on_request(aid)
@@ -517,9 +583,23 @@ def main() -> int:
                          "(dense model uses --base-model-gb).")
     ap.add_argument("--model-d", type=int, default=4096,
                     help="model dim D (Llama2-7B=4096, 13B=5120, Llama3-8B=4096)")
-    ap.add_argument("--dist", choices=["uniform", "skewed"], default="uniform")
+    ap.add_argument("--dist", choices=["uniform", "skewed", "lmsys"],
+                    default="uniform",
+                    help="Request distribution. 'lmsys' = real Chatbot Arena "
+                         "popularity (Vicuna ~49% + power-law tail) over "
+                         "--n-adapters (paper LMSYS: 25), per-adapter batch "
+                         "capped at 256 (paper §5.1).")
     ap.add_argument("--n-hot", type=int, default=50,
                     help="Skewed: number of hot adapters that receive 80% of requests")
+    ap.add_argument("--kv-dist", choices=["uniform", "lognormal"],
+                    default="uniform",
+                    help="Per-request context-length distribution. 'lognormal' "
+                         "= right-skewed truncated to [--kv-min, --kv-max] with "
+                         "pre-truncation mean --kv-mean (LMSYS real-trace shape).")
+    ap.add_argument("--kv-mean", type=float, default=150.0,
+                    help="lognormal kv: pre-truncation mean context length")
+    ap.add_argument("--kv-sigma", type=float, default=0.8,
+                    help="lognormal kv: shape (sigma of underlying normal)")
     ap.add_argument("--baseline",
                     choices=["none", "cpu_offload", "no_cxl",
                              "grace_hopper", "all"],

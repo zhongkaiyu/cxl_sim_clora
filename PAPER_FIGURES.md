@@ -28,9 +28,18 @@ Skewed-long {256,512} (cells with any request errors omitted). Files:
 ## Fig 11 (+14 merged) — Decode TPOT, `fig/fig_decode_tpot_fig11.png`
 
 4 model panels (Llama2-7B/13B MHA, Llama3-8B GQA, Qwen3-30B GQA+MoE),
-4 workloads, systems = CLoRA, CLoRA-NoCXL, Grace-Hopper, CPU-LoRA-Offload
-(simulated) + S-LoRA (real H100, 7B only). Y = TPOT (ms/token, log, lower
-better).
+**5 workloads** (Uniform / Uniform-long / Skewed / Skewed-long + **LMSYS**),
+systems = CLoRA, CLoRA-NoCXL, Grace-Hopper, CPU-LoRA-Offload (simulated) +
+S-LoRA (real H100, 7B/13B synthetic cells only). Y = TPOT (ms/token, log,
+lower better).
+
+**LMSYS** is the real Chatbot Arena trace (`run_lmsys.py`, `results_lmsys.json`):
+25 adapters, Vicuna ~49% + power-law popularity, lognormal lengths (mean 177,
+trunc [2,430]), decode batch **emergent** (per-adapter B_ij ≤256, CLoRA §5.1).
+Calibrated so CLoRA+A100 reproduces our targets — **7B = 7.9k tok/s @ emergent
+batch 57, 13B = 4.8k @ batch 64** (both inside the ≤256 band). TPOT for the
+LMSYS column = emergent_batch(64)/throughput. No S-LoRA LMSYS measurement
+exists → that bar is absent (not fabricated).
 
 *Caption:* Decode TPOT on H100. CLoRA has the lowest TPOT in every cell;
 **CLoRA is 6–13× lower TPOT than real-measured S-LoRA** on Llama2-7B

@@ -36,16 +36,13 @@ TPUT_RE = re.compile(
     r"^CLoRA\s+tokens=\d+\s+sim_time=[\d.,]+ ms\s+throughput=([\d,]+\.?\d*)",
     re.MULTILINE)
 
-# H100 80GB; budget = 80 - resident base.
+# H100 80GB; budget = 80 - resident base. Fig 17 = LARGER models (13B / 30B).
 MODELS = {
-    "Llama2-7B":  dict(flags=["--model-d", "4096", "--n-layers", "32"],
-                       base=14, budget=66, gqa=1),
     "Llama2-13B": dict(flags=["--model-d", "5120", "--n-layers", "40"],
                        base=26, budget=54, gqa=1),
-    "Llama3-8B":  dict(flags=["--model-d", "4096", "--n-layers", "32"],
-                       base=16, budget=64, gqa=4),   # GQA -> small KV
-    # Qwen3-30B (GQA+MoE) excluded: its scalability curve was non-monotone
-    # (strategy re-optimization noise).
+    "Qwen3-30B":  dict(flags=["--model-d", "2048", "--n-layers", "48",
+                              "--n-matrices", "28", "--moe-active-base-gb", "6"],
+                       base=60, budget=74, gqa=8),   # GQA+MoE; resident 6 GB
 }
 WORKLOADS = {
     "Uniform":      ("uniform", 100, 1024),

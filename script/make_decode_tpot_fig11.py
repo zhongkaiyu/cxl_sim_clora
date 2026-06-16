@@ -34,15 +34,20 @@ SYS = [("CLoRA", "CLoRA (Ours)", "#d62728"),
 MODELS = ["Llama2-7B", "Llama2-13B", "Llama3-8B", "Qwen3-30B"]
 TAG = {"Llama2-7B": "Llama2-7B (MHA)", "Llama2-13B": "Llama2-13B (MHA)",
        "Llama3-8B": "Llama3-8B (GQA)", "Qwen3-30B": "Qwen3-30B (GQA+MoE)"}
-WL = ["Uniform", "Uniform-long", "Skewed", "Skewed-long"]
+WL = ["Uniform", "Uniform-long", "Skewed", "Skewed-long", "LMSYS"]
 WLAB = {"Uniform": "Unif", "Uniform-long": "Unif-L",
-        "Skewed": "Skew", "Skewed-long": "Skew-L"}
+        "Skewed": "Skew", "Skewed-long": "Skew-L", "LMSYS": "LMSYS"}
+# LMSYS decode batch is emergent (per-adapter B_ij<=256); the run used this
+# operating batch, so TPOT = LMSYS_BATCH / throughput (not the batch-32 BATCH).
+LMSYS_BATCH = 64
 
 plt.rcParams.update({"font.size": 9, "axes.titlesize": 10})
 
 
 def main():
     g = json.load(open(os.path.join(HERE, "results_decode_unfused.json")))["H100"]
+    # LMSYS (real Chatbot Arena trace) decode, H100; emergent batch
+    lmsys = json.load(open(os.path.join(HERE, "results_lmsys.json")))["H100"]
     # real S-LoRA, per model; only zero-error cells are present in each file
     slora = {
         "Llama2-7B": json.load(open(os.path.join(HERE,
@@ -53,13 +58,19 @@ def main():
 
     def tpot(model, wl, key):
         if key == "SLoRA":
+            # no LMSYS S-LoRA measurements; only synthetic 7B/13B exist
+            if wl == "LMSYS":
+                return None
             sd = slora.get(model)
             if sd is None or wl not in sd or "tpot_mean_s" not in sd[wl]:
                 return None
             return sd[wl]["tpot_mean_s"] * 1000.0
+        if wl == "LMSYS":
+            v = lmsys.get(model, {}).get(key)
+            return LMSYS_BATCH / v * 1000.0 if v else None
         return BATCH / g[model][wl][key] * 1000.0
 
-    fig, axes = plt.subplots(1, 4, figsize=(15.0, 3.6), sharey=True)
+    fig, axes = plt.subplots(1, 4, figsize=(17.0, 3.6), sharey=True)
     x = np.arange(len(WL))
     n = len(SYS)
     width = 0.16
@@ -88,10 +99,11 @@ def main():
     h, l = axes[0].get_legend_handles_labels()
     fig.legend(h, l, loc="upper center", ncol=5, bbox_to_anchor=(0.5, 1.06),
                frameon=False, fontsize=9)
-    fig.suptitle("Decode TPOT on H100 (log scale, lower is better), batch 32, "
-                 "1000 adapters — S-LoRA is real-measured (Llama2-7B/13B, "
-                 "zero-error cells only)",
-                 y=1.10, fontsize=9.5, style="italic")
+    fig.suptitle("Decode TPOT on H100 (log scale, lower is better) — synthetic "
+                 "workloads: batch 32, 1000 adapters; LMSYS: real Chatbot Arena "
+                 "trace, 25 adapters, emergent batch. S-LoRA real-measured "
+                 "(Llama2-7B/13B synthetic cells only)",
+                 y=1.10, fontsize=9.0, style="italic")
     fig.tight_layout(rect=[0, 0, 1, 0.97])
     for ext in ("png", "pdf"):
         fig.savefig(os.path.join(FIG, f"fig_decode_tpot_fig11.{ext}"),

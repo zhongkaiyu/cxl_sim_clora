@@ -1,0 +1,66 @@
+{
+  "_config": {
+    "workload": "LMSYS (Chatbot Arena real trace)",
+    "n_adapters": 25,
+    "popularity": "Vicuna ~49% + power-law tail",
+    "kv_dist": "lognormal mean=177 sigma=0.8 trunc[2,430]",
+    "emergent_step_batch": 64,
+    "note": "decode batch emergent (per-adapter B_ij<=256, CLoRA 5.1); operating batch chosen to reproduce CLoRA+A100 targets (7B~7.9k, 13B~4.8k).",
+    "calibration_targets_A100": {
+      "Llama2-7B": 7900,
+      "Llama2-13B": 4800
+    }
+  },
+  "A100": {
+    "Llama2-7B": {
+      "NoCXL": 1616.0,
+      "CPULoRA": 1138.1,
+      "GraceHopper": 3550.2,
+      "CLoRA": 8845.7
+    },
+    "Llama2-13B": {
+      "NoCXL": 1187.5,
+      "CPULoRA": 713.6,
+      "GraceHopper": 2116.1,
+      "CLoRA": 4763.1
+    },
+    "Llama3-8B": {
+      "NoCXL": 1574.9,
+      "CPULoRA": 2986.0,
+      "GraceHopper": 5767.3,
+      "CLoRA": 7740.0
+    },
+    "Qwen3-30B": {
+      "NoCXL": 1239.0,
+      "CPULoRA": 1718.9,
+      "GraceHopper": 1980.9,
+      "CLoRA": 20640.0
+    }
+  },
+  "H100": {
+    "Llama2-7B": {
+      "NoCXL": 1751.2,
+      "CPULoRA": 1203.7,
+      "GraceHopper": 4278.1,
+      "CLoRA": 15314.3
+    },
+    "Llama2-13B": {
+      "NoCXL": 1327.2,
+      "CPULoRA": 762.0,
+      "GraceHopper": 2606.8,
+      "CLoRA": 8246.2
+    },
+    "Llama3-8B": {
+      "NoCXL": 1723.0,
+      "CPULoRA": 3569.5,
+      "GraceHopper": 8428.4,
+      "CLoRA": 13400.0
+    },
+    "Qwen3-30B": {
+      "NoCXL": 1269.9,
+      "CPULoRA": 2655.3,
+      "GraceHopper": 3337.2,
+      "CLoRA": 34658.6
+    }
+  }
+}
