@@ -1,0 +1,10 @@
+{
+  "_source": "Real S-LoRA measured on H100 server, Llama2-13B, prefill phase, batch 256/512/1024. Values are ttft_mean_s. ONLY zero-error cells included; cells with any errors (Uniform-long b512/b1024, Skewed b1024, Skewed-long b1024) are omitted (not plotted).",
+  "platform": "H100 (real, measured)",
+  "model": "Llama2-13B",
+  "phase": "prefill",
+  "Uniform":      {"256": 34.1062, "512": 65.9784, "1024": 125.2400},
+  "Uniform-long": {"256": 44.6017},
+  "Skewed":       {"256": 32.3448, "512": 59.3563},
+  "Skewed-long":  {"256": 44.2784, "512": 93.1836}
+}

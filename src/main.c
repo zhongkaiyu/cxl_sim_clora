@@ -138,9 +138,11 @@ static unsigned int emit_lora_for_adapter(struct cxl_switch_device_info *ssd,
                                           const JsonData *j) {
     if (ad->batch == 0) return (unsigned)-1;
 
-    unsigned int D = j->model_d;
-    unsigned int S = j->s_dtype;
-    unsigned int per_layer_mat = j->n_layers * j->n_matrices;
+    /* 64-bit so prefill-scale products (huge effective batch) don't overflow. */
+    uint64_t D = j->model_d;
+    uint64_t S = j->s_dtype;
+    uint64_t per_layer_mat = (uint64_t)j->n_layers * j->n_matrices;
+    uint64_t batch = ad->batch;
     unsigned int home = adapter_home_device(ad->id, j->n_cxl);
 
     switch (ad->strategy) {
@@ -164,8 +166,8 @@ static unsigned int emit_lora_for_adapter(struct cxl_switch_device_info *ssd,
         addr[0].gpu_id      = 0;
         addr[0].cxl_id      = home;
         addr[0].size        = 2u * ad->rank * D * S * per_layer_mat;
-        addr[0].input_size  = ad->batch * D * S * per_layer_mat;
-        addr[0].output_size = ad->batch * D * S * per_layer_mat;
+        addr[0].input_size  = batch * D * S * per_layer_mat;
+        addr[0].output_size = batch * D * S * per_layer_mat;
         struct request *r = create_ssd_request(ssd, READ_COMPUTE, addr, 1);
         slice_request(ssd);
         return r->idx;
@@ -176,8 +178,8 @@ static unsigned int emit_lora_for_adapter(struct cxl_switch_device_info *ssd,
         addr[0].gpu_id      = 0;
         addr[0].cxl_id      = home;
         addr[0].size        = ad->rank * D * S * per_layer_mat;
-        addr[0].input_size  = ad->batch * D * S * per_layer_mat;
-        addr[0].output_size = ad->batch * ad->rank * S * per_layer_mat;
+        addr[0].input_size  = batch * D * S * per_layer_mat;
+        addr[0].output_size = batch * ad->rank * S * per_layer_mat;
         struct request *r = create_ssd_request(ssd, READ_COMPUTE, addr, 1);
         slice_request(ssd);
         return r->idx;
@@ -208,24 +210,52 @@ static unsigned int emit_attention_for_adapter(struct cxl_switch_device_info *ss
                                                const JsonData *j) {
     if (ad->batch == 0 || ad->kv_tokens == 0) return (unsigned)-1;
 
-    unsigned int D = j->model_d;
-    unsigned int S = j->s_dtype;
+    /* 64-bit so prefill-scale products don't overflow. */
+    uint64_t D = j->model_d;
+    uint64_t S = j->s_dtype;
+    uint64_t NL = j->n_layers;
+    uint64_t batch = ad->batch;
     unsigned int n_cxl = j->n_cxl;
     if (n_cxl == 0) n_cxl = 1;
 
+    /* Prefill (kind==1, paper §5.2): the GPU computes the whole prompt's KV
+     * during the forward pass (attention runs on GPU as FlashAttention; that
+     * compute is charged in the GPU NPU_COMPUTE term).  The CXL-side cost is
+     * therefore *writing* the freshly built KV cache out to the devices,
+     * distributed at the token level.  Per device per layer we write
+     * 2*D*S*(kv_tokens/n_cxl) bytes; the n_cxl device links operate in
+     * parallel, so we issue one WRITE whose sub-requests fan across devices. */
+    if (j->kind == 1) {
+        uint64_t kv_per_device = ad->kv_tokens / n_cxl;
+        if (kv_per_device == 0) kv_per_device = 1;
+        uint64_t per_dev_write = 2u * D * S * kv_per_device * NL;
+        if (per_dev_write == 0) per_dev_write = 1;
+        struct addr_info *addr = make_addr_array(n_cxl);
+        for (unsigned int c = 0; c < n_cxl; c++) {
+            addr[c].gpu_id      = 0;
+            addr[c].cxl_id      = c;
+            addr[c].size        = per_dev_write;
+            addr[c].input_size  = 0;
+            addr[c].output_size = 0;
+        }
+        struct request *r = create_ssd_request(ssd, WRITE, addr, n_cxl);
+        slice_request(ssd);
+        return r->idx;
+    }
+
     /* KV cache slice per device, reduced by the GPU-resident fraction. */
-    unsigned int kv_per_device = ad->kv_tokens / n_cxl;
+    uint64_t kv_per_device = ad->kv_tokens / n_cxl;
     if (kv_per_device == 0) kv_per_device = 1;
     double p_cxl = 1.0 - j->kv_in_gpu_fraction;
     if (p_cxl < 0.0) p_cxl = 0.0;
     if (p_cxl > 1.0) p_cxl = 1.0;
 
-    unsigned int per_dev_dram = (unsigned int)(
-        2.0 * D * S * (double)kv_per_device * (double)j->n_layers * p_cxl);
+    uint64_t per_dev_dram = (uint64_t)(
+        2.0 * D * S * (double)kv_per_device * (double)NL * p_cxl);
     if (per_dev_dram == 0) per_dev_dram = 1;
     /* Full Q replicated to each device per layer; full partial O returned. */
-    unsigned int per_dev_input  = ad->batch * D * S * j->n_layers;
-    unsigned int per_dev_output = ad->batch * D * S * j->n_layers;
+    uint64_t per_dev_input  = batch * D * S * NL;
+    uint64_t per_dev_output = batch * D * S * NL;
 
     struct addr_info *addr = make_addr_array(n_cxl);
     for (unsigned int c = 0; c < n_cxl; c++) {

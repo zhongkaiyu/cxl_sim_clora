@@ -1,5 +1,12 @@
 # MICRO 2026 #785 — Rebuttal Experiments & Figures
 
+> **⚠️ SUPERSEDED (2026-06-14).** This round-1 doc uses throughput-axis
+> figures (`fig_decode_a100/h100`, `fig_gqa` — now removed) and the old
+> flat NoCXL launch model. The current results live in
+> [`REBUTTAL_R2.md`](./REBUTTAL_R2.md) (decode TPOT + prefill TTFT, both
+> NoCXL settings) and [`RESULTS.md`](./RESULTS.md) (unfused NoCXL numbers).
+> Kept for history; numbers below are stale.
+
 All results below were produced with the existing simulator and driver
 (no code changes); every number is the median of 3 trials, 10 warmup +
 10 measured decode steps, batch 32, seed 42, on the four synthetic
@@ -40,7 +47,7 @@ adapters). Raw data: `script/results_grid.json` (A100),
 |---|---:|---|
 | capacity / device | 512 | GB |
 | CXL link bandwidth / device | 128 | GB/s |
-| device DRAM bandwidth (64 ch × 17 GB/s) | 1,088 | GB/s |
+| device DRAM bandwidth (8 pkg × 136 GB/s) | 1,088 | GB/s |
 | NDP compute / device (8 TFLOPS aggregate) | 2 | TFLOPS FP16 |
 | NDP on-chip buffer | 3 | MB |
 | controller request buffer (8 × 128 B in-flight) | 1,024 | B |

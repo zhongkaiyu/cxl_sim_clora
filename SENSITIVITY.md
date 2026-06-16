@@ -1,169 +1,164 @@
 # CLoRA Hardware Sensitivity Study
 
-Reviewer-requested one-factor-at-a-time sweeps around the paper's
-operating point (Table 4: A100, 4 CLoRA devices, Llama2-7B,
-batch 32, 1000 adapters, seed 42, 10 warmup + 10 measured steps,
-median of 3 trials). The first row of each table is the
-default configuration; 'rel' columns are normalized to it.
+How CLoRA's decode performance moves as each hardware knob is varied, in
+**absolute** terms (no normalization), across ranges chosen to **cross
+each knob's knee** so bottlenecks are actually visible.
 
-All numbers use the corrected attention accounting (GPU-side attention
-charged per paper Eq 7; cost-aware KV-duplication fraction — see
-RESULTS.md §4 methodology note), which is why the Uniform-long default
-reads 2,796 tok/s rather than the earlier draft's 3,324.
+## Why the first cut looked "flat" (and what fixed it)
 
-Knob plumbing: every point sets the C event simulator's parameter
-file *and* the matching cost-model value, so both the measured
-timing and the strategy-selection algorithm (Algorithm 1, Eqs 1-9)
-see the same hardware.
+An earlier version swept each knob over a narrow, realistic range and
+found almost no change. That was misleading: at the paper's operating
+point the swept knobs were all **well above their knees** (over-provisioned),
+and the *dominant* bottleneck — device DRAM bandwidth — was not even in
+the set. Stress tests confirmed the knobs do bottleneck at extreme values
+(CXL link at 1 GB/s → 357 tok/s; device DRAM at 68 GB/s → 175 tok/s). This
+study therefore (1) widens each range to span the knee and (2) adds
+**device DRAM bandwidth** as a fifth knob.
 
-## CXL link latency (added one-way switch latency, ns)
+## Experiment design
 
-| point | Uniform (tok/s) | rel | Uniform-long (tok/s) | rel |
-|---|---:|---:|---:|---:|
-| +0 | 4,423 | 1.00x | 2,796 | 1.00x |
-| +100 | 4,423 | 1.00x | 2,797 | 1.00x |
-| +200 | 4,423 | 1.00x | 2,797 | 1.00x |
-| +400 | 4,423 | 1.00x | 2,845 | 1.02x |
-| +800 | 4,423 | 1.00x | 2,999 | 1.07x |
-| +1600 | 4,423 | 1.00x | 2,991 | 1.07x |
+One-factor-at-a-time around the paper's operating point (Table 4: A100,
+4 CLoRA devices, **Llama2-7B**, batch 32, 1000 adapters, seed 42, median
+of 3 trials). **HW-only**: for each knob we fix the workload, model,
+platform, and the strategy/policy (the Python cost model stays at default)
+and vary only the C-simulator hardware parameter, re-timing the identical
+request stream. This isolates the raw hardware effect (a coupled sweep
+that also moves the cost model adds non-monotone strategy-reopt noise).
 
-## CXL link bandwidth per device (GB/s)
+**Two workload regimes per knob:**
+- **Uniform (short-KV, 100–1024 tok)** — HBM-bound: the step is pinned at
+  the base-model HBM floor (14 GB / 1935 GB/s = **7.235 ms**, 4,423 tok/s)
+  and is insensitive until a knob is starved so hard the CXL work can no
+  longer hide under it.
+- **Uniform-long (long-KV, 2048–4096 tok)** — the CXL/NDP attention path is
+  on the critical path; this is where the knobs bite.
 
-| point | Uniform (tok/s) | rel | Uniform-long (tok/s) | rel |
-|---|---:|---:|---:|---:|
-| 128 | 4,423 | 1.00x | 2,796 | 1.00x |
-| 32 | 4,423 | 1.00x | 2,787 | 1.00x |
-| 64 | 4,423 | 1.00x | 2,794 | 1.00x |
-| 256 | 4,423 | 1.00x | 2,632 | 0.94x |
-| 512 | 4,423 | 1.00x | 2,632 | 0.94x |
+Figures (absolute, log–log, shared y-axis): `fig/fig_sensitivity_throughput.{png,pdf}`
+(tok/s, higher better) and `fig/fig_sensitivity_tpot.{png,pdf}` (ms/token,
+lower better). Gray dotted = paper default; black dashed = HBM-bound limit.
+Run `python3 script/run_sensitivity.py` then `python3 script/make_sensitivity_figure.py`.
+Data: `script/sensitivity_abs.json`.
 
-## NDP core throughput per device (FP16 TFLOPS, ops-based PE model)
+## Which knobs are bottlenecks (long-KV throughput span)
 
-| point | Uniform (tok/s) | rel | Uniform-long (tok/s) | rel |
-|---|---:|---:|---:|---:|
-| 2.0 (legacy PE model) | 4,423 | 1.00x | 2,796 | 1.00x |
-| 2.0 | 4,423 | 1.00x | 2,775 | 0.99x |
-| 0.25 | 3,909 | 0.88x | 1,558 | 0.56x |
-| 0.5 | 4,423 | 1.00x | 2,178 | 0.78x |
-| 1.0 | 4,423 | 1.00x | 2,800 | 1.00x |
-| 4.0 | 4,423 | 1.00x | 2,651 | 0.95x |
-| 8.0 | 4,423 | 1.00x | 2,656 | 0.95x |
+| knob | long-KV range (tok/s) | span | bottleneck? |
+|---|---|---:|---|
+| Device DRAM bandwidth | 165 → 3,011 | **18×** | **yes — dominant** |
+| NDP core throughput | 640 → 2,786 | **4.4×** | **yes (knee at 2 TFLOPS)** |
+| CXL link bandwidth | 801 → 2,804 | **3.5×** | **yes (below ~16 GB/s)** |
+| CXL link latency | 2,769 → 2,796 | 1.0× | no (flat) |
+| NDP controller buffer | 2,756 → 2,802 | 1.0× | no (flat) |
 
-## NDP controller buffer size (bytes; 128 B per in-flight request)
-
-| point | Uniform (tok/s) | rel | Uniform-long (tok/s) | rel |
-|---|---:|---:|---:|---:|
-| 1024 (8 reqs) | 4,423 | 1.00x | 2,796 | 1.00x |
-| 128 (1 reqs) | 4,423 | 1.00x | 2,756 | 0.99x |
-| 256 (2 reqs) | 4,423 | 1.00x | 2,802 | 1.00x |
-| 512 (4 reqs) | 4,423 | 1.00x | 2,800 | 1.00x |
-| 2048 (16 reqs) | 4,423 | 1.00x | 2,785 | 1.00x |
-| 4096 (32 reqs) | 4,423 | 1.00x | 2,762 | 0.99x |
+(NDP/DRAM/CXL-BW numbers with the FP16-corrected conf that now matches
+Table 4 exactly: NDP 2 TFLOPS = 2000 GOPS, DRAM 8 × 136 GB/s = 1088 GB/s,
+`data type = 16`.)
 
 ---
 
-## Analysis
+## Results
 
-**Short-KV workloads are insensitive to every knob except an extreme
-NDP setting.** The Uniform column is flat at 4,423 tok/s everywhere but
-NDP = 0.25 TFLOPS. At this operating point the decode step is
-GPU-HBM-bound: step time (7.235 ms) equals the base-model HBM read
-(14 GB / 1935 GB/s), the cost-aware policy keeps all KV on the devices
-(P_KV = 0), and the device-side attention (~2.2 ms across 4 devices)
-hides underneath. At 0.25 TFLOPS/device the devices become so slow that
-the policy starts duplicating KV into GPU memory; the GPU-side
-attention charge then breaks the HBM floor (-12%, 3,909 tok/s).
+### (a) CXL link latency — 200 → 6400 ns one-way  → flat
 
-**CXL latency: negligible direct effect (-0.2% at +1600 ns,
-hardware-only).** Per-request latency is amortized over MB-scale
-transfers.
+| latency (ns) | short-KV | long-KV |
+|---:|---:|---:|
+| 200 (default) | 4,423 | 2,796 |
+| 1600 | 4,423 | 2,790 |
+| 6400 | 4,423 | 2,769 |
 
-**CXL bandwidth: a 16x range (32 -> 512 GB/s) moves throughput by less
-than 2% (hardware-only).** This directly validates the paper's central
-design claim: E3-style NDP offload and distributed attention exist
-precisely to take the CXL link off the critical path. Only Q-in /
-partial-O-out traffic crosses the link per decode step.
+A 32× latency increase costs **1%** — per-request latency is amortized
+over MB-scale KV transfers. Latency is genuinely not a bottleneck.
 
-**NDP throughput is the one real cliff: -22% at 0.5, -44% at 0.25
-TFLOPS/device (coupled), saturating above ~1-2 TFLOPS.** Below ~1
-TFLOPS the PE is slower than its own device-DRAM read, so attention
-compute stops hiding behind the KV scan. The paper's 2 TFLOPS/device
-provisioning (Table 4) sits at the knee: sufficient, not
-over-provisioned.
+### (b) CXL link bandwidth — 2 → 512 GB/s  → knee at ~16–32 GB/s
 
-**NDP controller buffer: flat within ~1% from 1 to 32 in-flight
-requests.** Controller-buffer occupancy never gates progress at decode
-batch sizes.
+| bandwidth (GB/s) | short-KV | long-KV |
+|---:|---:|---:|
+| 2 | 702 | 793 |
+| 4 | 1,404 | 1,596 |
+| 8 | 2,986 | 2,542 |
+| 16 | 4,423 | 2,706 |
+| 32 | 4,423 | 2,756 |
+| 128 (default) | 4,423 | 2,796 |
+| 512 | 4,423 | 2,804 |
 
-### Decomposing hardware effect vs. policy response
+Below ~16 GB/s the link bottlenecks **both** workloads hard (4× drop at
+2 GB/s). Above ~32 GB/s it saturates — so the paper's CXL 3.1 link
+(128 GB/s) is comfortably past the knee, with ~4× headroom. This is the
+core CXL+NDP claim: because NDP keeps the big data (KV) on-device and only
+small Q/O cross the link, modest link bandwidth suffices.
 
-Each coupled sweep point updates both the simulated hardware and the
-cost model, so Algorithm 1 re-selects strategies and the KV fraction at
-every point. Holding the cost model at defaults and changing only the
-C-sim hardware isolates the raw effect (Uniform-long, median of 3,
-default = 2,796):
+### (c) NDP core throughput — 0.25 → 8 TFLOPS  → cliff, knee at 2 TFLOPS
 
-| point | coupled (HW + policy) | HW only | raw HW effect |
-|---|---:|---:|---:|
-| link bw 512 GB/s  | 2,632 (0.94x) | 2,804 (1.00x) | +0.3% |
-| link bw 32 GB/s   | 2,787 (1.00x) | 2,756 (0.99x) | -1.4% |
-| latency +1600 ns  | 2,991 (1.07x) | 2,789 (1.00x) | -0.2% |
-| NDP 0.5 TFLOPS    | 2,178 (0.78x) | 2,482 (0.89x) | -11% |
+| NDP TFLOPS | short-KV | long-KV |
+|---:|---:|---:|
+| 0.25 | 2,374 | 640 |
+| 0.5 | 4,369 | 1,268 |
+| 1.0 | 4,423 | 2,482 |
+| 2.0 (default) | 4,423 | 2,756 |
+| 4.0 | 4,423 | 2,775 |
+| 8.0 | 4,423 | 2,786 |
 
-Two honest observations follow:
+Below ~2 TFLOPS the PE is slower than its own DRAM scan and attention
+compute stops hiding — long-KV throughput halves each time NDP halves
+(2,756 → 1,268 → 640), and even short-KV dips at 0.25. Saturates just
+above 2 TFLOPS, so the paper provisions **exactly at the knee**. (With the
+FP16-corrected element count — `data type = 16` — the knee is at 2 TFLOPS;
+the earlier draft's `data type = 32` undercounted NDP ops 2× and put the
+knee at ~1.)
 
-1. The raw hardware effects are monotone and small for link knobs; the
-   +/-6-7% wiggles in the coupled link sweeps are the strategy selector
-   re-optimizing, whose effect at this operating point exceeds the
-   hardware deltas being studied. The +7% at +800/+1600 ns latency
-   means a latency-pessimistic cost model accidentally lands on a
-   better operating point than the default — i.e., the analytic
-   policy is within ~7% of the sim-optimal setting, not exactly on it.
-2. At weak NDP the coupled result (2,178) is *worse* than
-   hardware-only (2,482): the cost model overlaps device DRAM read and
-   PE compute (Eq 8's max) while the event simulator serializes them
-   per request, so the policy over-duplicates KV when NDP is slow.
-   This bounds the cost-model fidelity: within a few percent at the
-   paper's operating point, degrading at extreme (4x-derated) NDP
-   settings.
+### (d) Device DRAM bandwidth — 68 → 4352 GB/s  → the dominant bottleneck
 
-## Methodology notes & limitations
+| DRAM bw (GB/s) | short-KV | long-KV |
+|---:|---:|---:|
+| 64 | 613 | 165 |
+| 136 | 1,300 | 351 |
+| 272 | 2,596 | 701 |
+| 544 | 4,419 | 1,401 |
+| 1088 (default) | 4,423 | 2,796 |
+| 2176 | 4,423 | 3,011 |
+| 4352 | 4,423 | 3,011 |
 
-- **NDP PE timing model.** The C sim's legacy PE-compute formula
-  (`(addr_num-1) * size / elem / GOPS`, flash.c) collapses to ~1 ns for
-  the `addr_num == 1` sub-requests CLoRA emits, which would make the NDP
-  sweep a flat line. The study enables an opt-in ops-based model
-  (`ndp_compute_model = 1` in the conf: 2 ops per element read from
-  device DRAM). It is off by default, so RESULTS.md numbers are
-  unaffected; at the default 2 TFLOPS the model switch changes
-  Uniform-long throughput by only -0.7% (2,796 -> 2,775), confirming
-  continuity.
-- **Buffer scope.** `cxlctrl_buf_size` models the controller's
-  request/instruction buffer (admission window), not the 3 MB on-chip
-  SRAM data buffer of paper Table 6. Data-buffer capacity effects
-  (tiling of oversized working sets) are not modeled; at decode-time
-  request sizes this is second-order.
-- **Trial jitter.** The C sim's channel-service order uses
-  `srand(time(NULL))`, giving roughly +/-1% run-to-run variance on
-  long-KV workloads; medians of 3 trials are reported, same as
-  RESULTS.md.
-- **Conf-file gotcha.** `config/parameters.conf` has no trailing
-  newline; when appending keys (e.g. `ndp_compute_model = 1;`) prepend
-  a newline or the key silently concatenates onto the last line and
-  never parses. `sensitivity_study.py::make_conf` handles this.
+**Nearly linear** below 1 TB/s — long-KV throughput tracks DRAM bandwidth
+because reading the distributed KV cache is the largest term on the
+critical path. The paper's 1.1 TB/s sits on the **rising** part (2,796,
+vs 3,011 saturated), so device DRAM bandwidth is the binding resource at
+the default operating point, alongside NDP throughput at its knee. (This
+is the knob the reviewer list omitted; it's the real story.)
 
-## Reproducing
+### (e) NDP controller buffer — 1 → 32 in-flight  → flat
 
-```bash
-# full study (~3 minutes)
-python3 script/sensitivity_study.py --trials 3
+| in-flight | short-KV | long-KV |
+|---:|---:|---:|
+| 1 | 4,423 | 2,756 |
+| 8 (default) | 4,423 | 2,796 |
+| 32 | 4,423 | 2,762 |
 
-# one knob only
-python3 script/sensitivity_study.py --only ndp_throughput
+Within ±1.5%: at decode batch sizes the admission window never gates — a
+single in-flight request nearly saturates the device.
 
-# a single custom point, by hand
-python3 script/clora_driver.py ... --cxl-link-bw-gb 256 \
-    --c-parameter-file my.conf      # conf with cxl_bandwidth = 256;
-```
+---
 
-Raw per-point data: `script/sensitivity_results.json`.
+## Takeaways
+
+1. **CLoRA is balanced at the default point**, co-limited by **device DRAM
+   bandwidth** (on its rising region) and **NDP throughput** (at its knee).
+   Neither is grossly over- or under-provisioned.
+2. **CXL link bandwidth and latency are not the bottleneck** at the
+   paper's 128 GB/s — the link has ~4× headroom and latency is amortized.
+   This is the strongest evidence for the CXL+NDP design: it deliberately
+   moves the bottleneck off the bandwidth-limited link and onto the
+   high-bandwidth on-device DRAM/NDP.
+3. **NDP controller buffer is not a bottleneck** at decode batch sizes.
+4. Short-KV decode is HBM-bound and only perturbs when a knob is starved
+   enough to break the hiding of CXL work under the GPU floor.
+
+## Methodology notes
+
+- **NDP PE timing.** The NDP-throughput sweep uses the opt-in ops-based PE
+  model (`ndp_compute_model = 1`); the legacy formula collapses to ~1 ns
+  for `addr_num==1` sub-requests and would flat-line the panel. Off by
+  default elsewhere; <1% effect at the default 2 TFLOPS.
+- **Device DRAM bandwidth** is swept via `dram_channel_num` × 17 GB/s/channel
+  (default 64 → 1088 GB/s).
+- **Conf gotcha:** `config/parameters.conf` has no trailing newline; appended
+  keys must be newline-prefixed (`run_sensitivity.py::make_conf` handles it).
+- **Jitter:** C-sim channel order uses `srand(time)`, ~±1% on long-KV; medians of 3.

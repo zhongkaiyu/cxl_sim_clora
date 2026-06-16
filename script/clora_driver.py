@@ -23,6 +23,7 @@ import argparse
 import os
 import random
 import re
+import shutil as _shutil
 import subprocess
 import sys
 import time
@@ -158,9 +159,11 @@ def run_c_sim(json_path: str) -> int:
     global _run_counter
     if not os.path.isfile(BINARY):
         raise RuntimeError(f"binary not built: {BINARY} -- run 'make all' first")
-    # The C sim mkdir's raw/<timestamp>/ for logs and aborts on collision, so we
-    # hand it a fresh tag every call. Combine pid + counter so it stays unique
-    # across re-runs of the driver in the same second.
+    # The C sim mkdir's raw/<timestamp>/ for logs and aborts on collision.
+    # The timestamp buffer is char[16] (15 chars max), so the tag MUST stay
+    # short: pid(5) + counter(6) + '_' = 12 chars. To avoid collisions across
+    # re-runs that reuse a pid, we delete the per-run raw/<stamp> dir after
+    # parsing (see below) so raw/ never accumulates.
     _run_counter += 1
     stamp = f"{os.getpid() % 100000:05d}_{_run_counter:06d}"
     cmd = [BINARY, "--file", json_path, "--timestamp", stamp]
@@ -171,6 +174,9 @@ def run_c_sim(json_path: str) -> int:
         cwd=ROOT,
         stdout=subprocess.PIPE, stderr=subprocess.PIPE,
         text=True, timeout=300)
+    # Remove this run's raw log dir so raw/ never accumulates (keeps the short
+    # timestamp tag collision-free across many re-runs).
+    _shutil.rmtree(os.path.join(ROOT, "raw", stamp), ignore_errors=True)
     if proc.returncode != 0:
         sys.stderr.write(proc.stderr)
         raise RuntimeError(f"C sim returned {proc.returncode}")
@@ -194,7 +200,8 @@ def run_smoke(args: argparse.Namespace) -> None:
                  cxl_compute=args.ndp_tflops * 1e12,
                  cxl_dram_bw=args.cxl_dram_bw_gb * 1e9,
                  cxl_link_bw=args.cxl_link_bw_gb * 1e9,
-                 cxl_latency=args.cxl_latency_ns)
+                 cxl_latency=args.cxl_latency_ns,
+                 n_cxl=args.n_cxl)
     model = ModelConfig(d=args.model_d)
 
     # ---- baselines (independent toggles) ----
@@ -222,7 +229,8 @@ def run_smoke(args: argparse.Namespace) -> None:
         L_kernel_launch_ns=args.nocxl_L_kernel_launch_ns,
         L_device_command_ns=args.nocxl_L_device_command_ns,
         L_sync_ns=args.nocxl_L_sync_ns,
-        offloads_per_layer=args.nocxl_offloads_per_layer,
+        ffn_gemms_per_adapter=args.nocxl_ffn_gemms,
+        fused=args.nocxl_fused,
     )
     no_cxl_total_ns = 0
 
@@ -354,11 +362,16 @@ def run_smoke(args: argparse.Namespace) -> None:
                 parallel=not args.baseline_serial,
             )
 
-        # ---- NoCxl baseline: CLoRA step time + per-layer offload overhead ----
+        # ---- NoCxl baseline: CLoRA step time + per-launch offload overhead.
+        # Launches scale with serving adapters (QKV/O/FFN LoRA) and requests
+        # (attention), since CXL.mem's fine-grained access can't be fused away.
         no_cxl_step = None
         if no_cxl_on:
-            no_cxl_step = no_cxl_step_ns(step_ns, no_cxl_hw,
-                                         n_layers=args.n_layers)
+            no_cxl_step = no_cxl_step_ns(
+                step_ns, no_cxl_hw,
+                n_layers=args.n_layers,
+                n_serving_adapters=len(serving_ids),
+                n_requests=args.batch)
 
         # ---- Grace-Hopper baseline: GPU computes, C2C link to CPU memory ----
         gh_step_info = None
@@ -430,7 +443,8 @@ def run_smoke(args: argparse.Namespace) -> None:
         print(f"CLoRA-NoCXL     tokens={total_tokens}  "
               f"sim_time={no_cxl_total_ns/1e6:.3f} ms  "
               f"throughput={n_throughput:,.1f} tokens/s  "
-              f"(offloads/layer={no_cxl_hw.offloads_per_layer})")
+              f"(launches/adapter/layer={2 + no_cxl_hw.ffn_gemms_per_adapter}, "
+              f"+1/req attn)")
         print(f"  SPEEDUP    CLoRA / CLoRA-NoCXL = {speedup:.2f}x")
     if gh_on and gh_total_ns > 0:
         gh_throughput = total_tokens / (gh_total_ns / 1e9)
@@ -548,9 +562,13 @@ def main() -> int:
                     help="NoCxl: CPU/driver command issue per offload")
     ap.add_argument("--nocxl-L-sync-ns", type=float, default=1000.0,
                     help="NoCxl: stream/event sync per offload")
-    ap.add_argument("--nocxl-offloads-per-layer", type=int, default=2,
-                    help="NoCxl: offload boundaries per decoder layer "
-                         "(default 2: 1 batched LoRA + 1 attention)")
+    ap.add_argument("--nocxl-ffn-gemms", type=int, default=3,
+                    help="NoCxl: FFN GEMM kernel launches per adapter per "
+                         "layer (SwiGLU gate/up/down = 3, classic up/down = 2)")
+    ap.add_argument("--nocxl-fused", action="store_true",
+                    help="NoCxl: BGMV/S-LoRA-style fusion — one launch per op "
+                         "per layer, independent of adapter/request count "
+                         "(default: per-adapter unfused launches)")
     # ---- Grace-Hopper baseline knobs ----
     ap.add_argument("--gh-c2c-bw-gb", type=float, default=450.0,
                     help="Grace-Hopper: NVLink-C2C effective bandwidth (GB/s). "
@@ -577,6 +595,10 @@ def main() -> int:
     ap.add_argument("--cxl-dram-bw-gb", type=float, default=1100.0,
                     help="Device-internal DRAM bandwidth W_DRAM in GB/s. "
                          "Default 1100 (paper Table 4).")
+    ap.add_argument("--n-cxl", type=int, default=4,
+                    help="Number of CLoRA (CXL) memory devices N_CXL "
+                         "(default 4, paper Table 4). For >16, pass a "
+                         "--c-parameter-file with cxl_channel_number >= N_CXL.")
     ap.add_argument("--c-parameter-file", type=str, default=None,
                     help="Override the C sim's parameter file "
                          "(default: config/parameters.conf). The sensitivity "

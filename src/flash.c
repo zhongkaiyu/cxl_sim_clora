@@ -1383,7 +1383,7 @@ Status go_one_step_in_channel(struct cxl_switch_device_info * ssd, struct sub_re
                 sub->current_time=ssd->current_time;
                 sub->current_state=SR_CHANNEL_R_DATA_TRANSFER;
                 sub->next_state=SR_COMPLETE;
-                unsigned int read_data_size = 0; 
+                uint64_t read_data_size = 0; 
                 for(int i = 0; i < sub->addr_num; i++) {
                     read_data_size += sub->p_addr[i]->size;
                 }
@@ -1505,7 +1505,7 @@ Status go_one_step_in_channel(struct cxl_switch_device_info * ssd, struct sub_re
                  *******************************************************************************************************/
                 sub->current_time=ssd->current_time;
                 sub->current_state=SR_CHANNEL_W_TRANSFER;
-                unsigned int write_data_size = 0; 
+                uint64_t write_data_size = 0; 
                 for(int i = 0; i < sub->addr_num; i++) {
                     write_data_size += sub->p_addr[i]->size;
                 }
@@ -1598,7 +1598,7 @@ Status go_one_step_in_cxlctrl(struct cxl_switch_device_info * ssd, struct sub_re
             sub->current_time=ssd->current_time;
             sub->current_state=SR_CXLCTRL_R_READ;
             sub->next_state=SR_CHANNEL_R_DATA_TRANSFER;
-            unsigned int read_data_size = 0; 
+            uint64_t read_data_size = 0; 
             for(int i = 0; i < sub->addr_num; i++){
                 read_data_size += sub->p_addr[i]->size;
             }
@@ -1642,7 +1642,7 @@ Status go_one_step_in_cxlctrl(struct cxl_switch_device_info * ssd, struct sub_re
             sub->current_time=ssd->current_time;
             sub->current_state=SR_CXLCTRL_W_WRITE;
             sub->next_state=SR_CXLCTRL_W_CONFIRM;
-            unsigned int write_data_size = 0; 
+            uint64_t write_data_size = 0; 
             for(int i = 0; i < sub->addr_num; i++) {
                 write_data_size += sub->p_addr[i]->size;
             }
@@ -1715,7 +1715,7 @@ Status go_one_step_in_cxlctrl(struct cxl_switch_device_info * ssd, struct sub_re
             sub->current_time=ssd->current_time;
             sub->current_state=SR_CXLCTRL_RC_READ;
             sub->next_state=SR_CXLCTRL_RC_COMPUTE;
-            unsigned int read_data_size = 0; 
+            uint64_t read_data_size = 0; 
             for(int i = 0; i < sub->addr_num; i++) {
                 read_data_size += sub->p_addr[i]->size;
             }
@@ -1765,7 +1765,7 @@ Status go_one_step_in_cxlctrl(struct cxl_switch_device_info * ssd, struct sub_re
             sub->current_time=ssd->current_time;
             sub->current_state=SR_CXLCTRL_RC_DATA_TRANSFER;
             sub->next_state=SR_CHANNEL_RC_DATA_TRANSFER;
-            // unsigned int read_data_size = 0; 
+            // uint64_t read_data_size = 0; 
             // for(int i = 0; i < sub->addr_num; i++) read_data_size += sub->p_addr[i]->size;
             // sub->next_state_predict_time=ssd->current_time + read_data_size / ssd->parameter->cxl_bandwidth;
 

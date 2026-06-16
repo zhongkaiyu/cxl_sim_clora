@@ -1,0 +1,212 @@
+{
+  "cxl_latency": {
+    "title": "(a) CXL link latency",
+    "xlabel": "one-way CXL latency (ns)",
+    "default_x": 200,
+    "log": true,
+    "rows": [
+      {
+        "x": 200,
+        "Uniform": 4422.9,
+        "Uniform-long": 2795.7
+      },
+      {
+        "x": 400,
+        "Uniform": 4422.9,
+        "Uniform-long": 2795.4
+      },
+      {
+        "x": 800,
+        "Uniform": 4422.9,
+        "Uniform-long": 2793.4
+      },
+      {
+        "x": 1600,
+        "Uniform": 4422.9,
+        "Uniform-long": 2790.0
+      },
+      {
+        "x": 3200,
+        "Uniform": 4422.9,
+        "Uniform-long": 2783.3
+      },
+      {
+        "x": 6400,
+        "Uniform": 4422.9,
+        "Uniform-long": 2769.1
+      }
+    ]
+  },
+  "cxl_bandwidth": {
+    "title": "(b) CXL link bandwidth",
+    "xlabel": "link bandwidth (GB/s/device)",
+    "default_x": 128,
+    "log": true,
+    "rows": [
+      {
+        "x": 2,
+        "Uniform": 702.5,
+        "Uniform-long": 801.3
+      },
+      {
+        "x": 4,
+        "Uniform": 1404.5,
+        "Uniform-long": 1596.3
+      },
+      {
+        "x": 8,
+        "Uniform": 2950.8,
+        "Uniform-long": 2542.2
+      },
+      {
+        "x": 16,
+        "Uniform": 4422.9,
+        "Uniform-long": 2705.8
+      },
+      {
+        "x": 32,
+        "Uniform": 4422.9,
+        "Uniform-long": 2755.8
+      },
+      {
+        "x": 64,
+        "Uniform": 4422.9,
+        "Uniform-long": 2782.8
+      },
+      {
+        "x": 128,
+        "Uniform": 4422.9,
+        "Uniform-long": 2795.7
+      },
+      {
+        "x": 256,
+        "Uniform": 4422.9,
+        "Uniform-long": 2801.0
+      },
+      {
+        "x": 512,
+        "Uniform": 4422.9,
+        "Uniform-long": 2803.7
+      }
+    ]
+  },
+  "ndp_throughput": {
+    "title": "(c) NDP core throughput",
+    "xlabel": "NDP compute (TFLOPS/device)",
+    "default_x": 2.0,
+    "log": true,
+    "rows": [
+      {
+        "x": 0.25,
+        "Uniform": 2374.5,
+        "Uniform-long": 639.5
+      },
+      {
+        "x": 0.5,
+        "Uniform": 4369.3,
+        "Uniform-long": 1268.3
+      },
+      {
+        "x": 1.0,
+        "Uniform": 4422.9,
+        "Uniform-long": 2481.9
+      },
+      {
+        "x": 2.0,
+        "Uniform": 4422.9,
+        "Uniform-long": 2756.0
+      },
+      {
+        "x": 4.0,
+        "Uniform": 4422.9,
+        "Uniform-long": 2775.4
+      },
+      {
+        "x": 8.0,
+        "Uniform": 4422.9,
+        "Uniform-long": 2785.5
+      }
+    ]
+  },
+  "dram_bandwidth": {
+    "title": "(d) Device DRAM bandwidth",
+    "xlabel": "device DRAM bandwidth (GB/s)",
+    "default_x": 1088,
+    "log": true,
+    "rows": [
+      {
+        "x": 64,
+        "Uniform": 612.7,
+        "Uniform-long": 165.1
+      },
+      {
+        "x": 136,
+        "Uniform": 1300.5,
+        "Uniform-long": 350.7
+      },
+      {
+        "x": 272,
+        "Uniform": 2595.8,
+        "Uniform-long": 701.0
+      },
+      {
+        "x": 544,
+        "Uniform": 4419.1,
+        "Uniform-long": 1400.6
+      },
+      {
+        "x": 1088,
+        "Uniform": 4422.9,
+        "Uniform-long": 2795.7
+      },
+      {
+        "x": 2176,
+        "Uniform": 4422.9,
+        "Uniform-long": 3011.2
+      },
+      {
+        "x": 4352,
+        "Uniform": 4422.9,
+        "Uniform-long": 3011.2
+      }
+    ]
+  },
+  "ndp_buffer": {
+    "title": "(e) NDP controller buffer",
+    "xlabel": "in-flight requests",
+    "default_x": 8,
+    "log": true,
+    "rows": [
+      {
+        "x": 1,
+        "Uniform": 4422.9,
+        "Uniform-long": 2756.0
+      },
+      {
+        "x": 2,
+        "Uniform": 4422.9,
+        "Uniform-long": 2802.1
+      },
+      {
+        "x": 4,
+        "Uniform": 4422.9,
+        "Uniform-long": 2800.1
+      },
+      {
+        "x": 8,
+        "Uniform": 4422.9,
+        "Uniform-long": 2795.7
+      },
+      {
+        "x": 16,
+        "Uniform": 4422.9,
+        "Uniform-long": 2784.7
+      },
+      {
+        "x": 32,
+        "Uniform": 4422.9,
+        "Uniform-long": 2761.8
+      }
+    ]
+  }
+}

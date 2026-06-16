@@ -1,0 +1,46 @@
+% Table 4 — CLoRA System Configuration Details, with the simulator's
+% fine-grained latency parameters added in BLUE.
+% Requires \usepackage[table]{xcolor} (or just \usepackage{xcolor}).
+% The paper's original rows are black; our additions are \textcolor{blue}{...}.
+
+\begin{table}[t]
+\centering
+\caption{CLoRA System Configuration Details. \textcolor{blue}{Blue rows are
+the fine-grained latency parameters used by our event-driven simulator
+(the paper lists only aggregate bandwidth/compute).}}
+\label{tab:config}
+\small
+\begin{tabular}{@{}ll@{}}
+\toprule
+\textbf{Component} & \textbf{Configuration} \\
+\midrule
+GPU & 1$\times$ NVIDIA A100 SXM, 1935 GB/s bandwidth \\
+\midrule
+\multirow{3}{*}{CLoRA Mem Device}
+  & 4 Devices, each with 512 GB capacity \\
+  & 128 GB/s CXL Link \\
+  & 1.1 TB/s DRAM bandwidth \\
+\midrule
+CXL Link & PCIe 6.0 and CXL 3.1, 128 GB/s bandwidth \\
+\midrule
+\multirow{3}{*}{DRAM in Device}
+  & 8 Package LPDDR5X DIMM \\
+  & 64 GB capacity / Package \\
+  & 136 GB/s bandwidth / Package \\
+\midrule
+\multirow{3}{*}{NDP core in Device}
+  & 2 TFLOPS FP16 computing power each device \\
+  & 8 TFLOPS for a total of 4 devices \\
+  & 3 MB on-chip buffer \\
+\midrule
+\textcolor{blue}{\multirow{7}{*}{Latency parameters}}
+  & \textcolor{blue}{CXL link latency $L_{\mathrm{CXL}}$: 200 ns} \\
+  & \textcolor{blue}{CA transfer on CXL link $t_{\mathrm{CMD,CXL}}$: 30 ns} \\
+  & \textcolor{blue}{Controller request decode $t_{\mathrm{ANALYZE}}$: 10 ns} \\
+  & \textcolor{blue}{Controller$\rightarrow$DRAM command $t_{\mathrm{CMD,DRAM}}$: 10 ns} \\
+  & \textcolor{blue}{DRAM read latency $t_{\mathrm{DRAM,RD}}$: 30 ns (+ bytes/$W_{\mathrm{DRAM}}$)} \\
+  & \textcolor{blue}{DRAM write latency $t_{\mathrm{DRAM,WR}}$: 40 ns (+ bytes/$W_{\mathrm{CXL}}$)} \\
+  & \textcolor{blue}{CXL switch / NDP-cmd overhead: 0 ns (off by default)} \\
+\bottomrule
+\end{tabular}
+\end{table}

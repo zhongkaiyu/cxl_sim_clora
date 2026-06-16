@@ -144,9 +144,12 @@ struct npu_info{
 struct addr_info {
     unsigned int gpu_id;
     unsigned int cxl_id;
-    unsigned int size;
-    unsigned int input_size;    // B
-    unsigned int output_size;   // B
+    /* Byte counts. 64-bit so prefill-scale transfers (millions of tokens x D x
+     * S x n_layers, i.e. tens of GB) do not overflow. Decode values are small,
+     * so decode timing is unchanged. */
+    uint64_t size;
+    uint64_t input_size;    // B
+    uint64_t output_size;   // B
 };
 
 struct user_args{
@@ -452,8 +455,10 @@ struct map_info{
 
 struct npu_request{
     unsigned int type;
-    unsigned int begin_time;
-    unsigned int end_time;
+    /* 64-bit ns timestamps: decode steps are sub-ms, but prefill TTFT can be
+     * many seconds (> 2^31 ns), which would wrap a 32-bit field. */
+    int64_t begin_time;
+    int64_t end_time;
     unsigned int idx;
 
     struct npu_request *next_node;
@@ -467,8 +472,8 @@ struct request{
     unsigned int operation;            //请求的种类，1为读，0为写
     struct addr_info *addr;            //请求的地址信息的头指针
     unsigned int addr_num;             //请求的地址个数
-    unsigned int output_size;          // for read compute request, the ouputsize of each sub_request/B
-    unsigned int input_size;            // for read comptue request, the inputsize of each sub_request/B
+    uint64_t output_size;          // for read compute request, the ouputsize of each sub_request/B
+    uint64_t input_size;            // for read comptue request, the inputsize of each sub_request/B
 
     unsigned int* need_distr_flag;
     unsigned int complete_lsn_count;   //record the count of lsn served by buffer
@@ -494,8 +499,8 @@ struct sub_request{
     unsigned int idx;                  //每个sub request 都有一个idx，方便定位
     struct addr_info ** p_addr;           //请求的地址信息的头指针
     unsigned int addr_num;             //请求的地址个数
-    unsigned int output_size;          // for read compute request, the ouputsize of each sub_request/B
-    unsigned int input_size;            // for read comptue request, the inputsize of each sub_request/B
+    uint64_t output_size;          // for read compute request, the ouputsize of each sub_request/B
+    uint64_t input_size;            // for read comptue request, the inputsize of each sub_request/B
 
     unsigned int current_state;        //表示该子请求所处的状态，见宏定义sub request
     int64_t current_time;

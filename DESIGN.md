@@ -48,16 +48,21 @@ system(s), and prints per-step + aggregate throughput.
 
 ### Expected ordering
 
+With the **primary (unfused) NoCXL** launch model, the CXL interface is a
+first-order effect and CLoRA-NoCXL drops well below the GPU-resident
+baselines on short/GQA/MoE workloads:
+
 ```
-CPU-LoRA-Offload  <  Grace-Hopper  <  CLoRA-NoCXL  <  CLoRA
-       ~133              ~620            ~3,450        ~3,634   (7B avg tok/s, A100)
+CPU-LoRA-Offload  <  CLoRA-NoCXL(unfused)  ≲  Grace-Hopper  ≪  CLoRA
+   (CPU matmul)        (per-adapter launches)   (GPU+C2C)        (CXL+NDP)
 ```
 
-(Numbers under the corrected attention accounting + GPU-memory-parity
-baseline caches; see RESULTS.md §4 methodology note.)
+Under the **fused** NoCXL model (S-LoRA/BGMV batching) the original
+ordering is restored: `CPU < Grace-Hopper < CLoRA-NoCXL < CLoRA`, with
+CLoRA/NoCXL ≈ 1.3–1.6×. See RESULTS.md §4 for both columns.
 
 The four-way comparison answers two reviewer questions cleanly:
-- **CLoRA vs CLoRA-NoCXL (~1.05×)**: the CXL interface itself adds ~4–6%
+- **CLoRA vs CLoRA-NoCXL (6–12× unfused / 1.3–1.6× fused)**: the CXL interface adds
 - **CLoRA vs Grace-Hopper (~5.9×)**: NDP placement matters even with a coherent 450 GB/s CPU-GPU link
 
 ---
@@ -209,7 +214,7 @@ The four LoRA execution strategies (per-adapter):
 | `cxl_bandwidth` | 128 (B/ns ≡ GB/s) | CXL link bandwidth per device |
 | `dram_channel_num` | 64 | DRAM channels per CXL device |
 | `dram_channel_bandwidth` | 17 (B/ns) | per-channel DRAM BW → aggregate ≈ 1088 B/ns (1.1 TB/s) |
-| `chip_computing_power` | 200 (GOPS) | NDP PE throughput |
+| `chip_computing_power` | 2000 (GOPS) | NDP PE throughput |
 | `t_CMD_CXL` | 30 ns | command transfer on CXL link |
 | `t_ANALYZE` | 10 ns | controller decode |
 | `t_CMD_DRAM` | 10 ns | controller→DRAM command |
@@ -228,7 +233,32 @@ The four LoRA execution strategies (per-adapter):
 the CXL fabric+protocol from the cost of putting compute near data. NDP
 devices are connected over PCIe instead of CXL; the GPU cannot integrate
 remote ops into a single execution path. Every GPU↔NDP dependency
-boundary requires a kernel relaunch + DMA + sync.
+boundary requires a kernel relaunch + DMA + sync (one launch = 5 µs
+kernel + 1 µs device command + 1 µs sync = **7 µs**).
+
+**Two launch-granularity settings** (both kept; `--nocxl-fused` selects):
+
+- **unfused (primary, default)** — without CXL.mem's fine-grained
+  load/store, different adapters' remote NDP ops cannot be fused into one
+  kernel, so the launch count scales with serving adapters and requests:
+
+  ```
+  launches/layer = n_adapters·(QKV[1]+O[1]+FFN[ffn_gemms]) + n_requests·attn[1]
+  ```
+
+  with `ffn_gemms = 3` (SwiGLU; used for all models including Qwen MoE).
+  At batch 32 this is ~192 launches/layer → ~43 ms/step overhead, so the
+  CXL interface is a **first-order** effect (CLoRA/NoCXL ≈ 6–12×) and
+  NoCXL can fall *below* Grace-Hopper on short/GQA/MoE workloads.
+
+- **fused (`--nocxl-fused`)** — S-LoRA/BGMV-style batching: one launch per
+  *op* per layer (QKV+O+3 FFN + attention = 6), independent of adapter and
+  request count → ~1.3 ms/step overhead, CLoRA/NoCXL ≈ 1.3–1.6×, preserving
+  the `CLoRA > NoCXL > Grace-Hopper > CPU` ordering.
+
+The truth lies between: a real PCIe-NDP system can BGMV-batch the
+projection LoRA but probably cannot fuse attention across requests with
+distinct KV as cheaply. Plots and headline numbers use **unfused**.
 
 ### Architecture
 
@@ -256,24 +286,29 @@ Per GPU↔NDP offload boundary, NoCxl pays:
 
 ### What's implemented
 
-`script/baseline_no_cxl.py` — a thin (~60 LOC) overhead layer that
-augments a CLoRA simulator step time with per-layer offload boundaries:
+`script/baseline_no_cxl.py` — a thin overhead layer that augments a CLoRA
+simulator step time with the per-launch GPU↔NDP offload cost:
 
 ```
-T_NoCxl = T_CLoRA + (L_kernel + L_device + L_sync) × offloads_per_layer × n_layers
+launches/layer = (unfused) n_adapters·(2+ffn_gemms) + n_requests
+                 (fused)   (2+ffn_gemms) + 1
+T_NoCxl        = T_CLoRA + launches/layer × n_layers × (L_kernel+L_device+L_sync)
 ```
 
 Why a thin model: everything else (DRAM read time, NDP compute time, link
 transfer time, strategy choices, memory accounting) is identical to
-CLoRA. We literally take the C simulator's per-step time and add
-host-side overhead.
+CLoRA. We literally take the C simulator's per-step time and add the
+host-side launch overhead the CXL interface would have avoided.
 
 ### Per-step pipeline (NoCxl)
 
 ```
 1-8. Identical to CLoRA (same strategy decisions, same workload, same
      C simulator run → step_ns)
-9.   no_cxl_step_ns = step_ns + (L_kernel + L_device + L_sync) × offloads_per_layer × n_layers
+9.   no_cxl_step_ns = step_ns + launches/layer × n_layers
+                                 × (L_kernel + L_device + L_sync)
+     where launches/layer counts per-adapter QKV/O/FFN launches and
+     per-request attention launches (unfused), or one launch per op (fused).
 ```
 
 ### Levers
@@ -700,7 +735,7 @@ Quick reference:
 CXL-specific parameters (from `config/parameters.conf`):
 - `cxl_bandwidth = 128` (B/ns) — link
 - `dram_channel_num = 64`, `dram_channel_bandwidth = 17` — internal DRAM
-- `chip_computing_power = 200` — NDP PE
+- `chip_computing_power = 2000` — NDP PE (2 TFLOPS)
 - `L_CXL_switch` — switch traversal sensitivity (default 0)
 - `L_read_compute_cmd` — RC overhead sensitivity (default 0)
 
