@@ -7,5 +7,6 @@
   "Uniform":      {"tpot_mean_s": 0.0564, "errors": 0},
   "Uniform-long": {"tpot_mean_s": 0.0556, "errors": 0},
   "Skewed":       {"tpot_mean_s": 0.0549, "errors": 0},
-  "Skewed-long":  {"tpot_mean_s": 0.0525, "errors": 0}
+  "Skewed-long":  {"tpot_mean_s": 0.0525, "errors": 0},
+  "LMSYS":        {"tpot_mean_s": 0.0268, "_note": "real S-LoRA H100, LMSYS Chatbot Arena trace, 25 adapters"}
 }

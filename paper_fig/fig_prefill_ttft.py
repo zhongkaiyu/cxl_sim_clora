@@ -15,7 +15,7 @@ import sys
 import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from _style import (MODEL_TAGS, TTFT_LABEL, panel_caption,  # noqa: E402
+from _style import (MODEL_TAGS, TTFT_LABEL, panel_xlabel,  # noqa: E402
                     clean_axis, save)
 import matplotlib.pyplot as plt  # noqa: E402
 
@@ -34,7 +34,7 @@ BATCHES = [("256", "B=256", "#9ecae1"),
 def main():
     p = json.load(open(os.path.join(SCRIPT, "results_prefill.json")))
 
-    fig, axes = plt.subplots(1, 4, figsize=(13.0, 3.0), sharey=True)
+    fig, axes = plt.subplots(1, 4, figsize=(16.0, 4.8), sharey=True)
     x = np.arange(len(WL))
     n = len(BATCHES)
     width = 0.26
@@ -48,13 +48,13 @@ def main():
         ax.set_xticks(x)
         ax.set_xticklabels([WLAB[w] for w in WL], rotation=30, ha="right")
         ax.set_ylim(top=ax.get_ylim()[1] * 2.0)
-        panel_caption(ax, idx, MODEL_TAGS[m])
+        panel_xlabel(ax, idx, MODEL_TAGS[m], pad=26)
     axes[0].set_ylabel(TTFT_LABEL)
     h, l = axes[0].get_legend_handles_labels()
-    fig.legend(h, l, loc="upper center", ncol=3, bbox_to_anchor=(0.5, 1.07),
-               frameon=False, columnspacing=1.4, handlelength=1.4,
+    fig.legend(h, l, loc="upper center", ncol=3, bbox_to_anchor=(0.5, 1.12),
+               frameon=False, columnspacing=1.2, handlelength=1.2,
                title="Prefill batch size (CLoRA)")
-    fig.tight_layout(rect=[0, 0.04, 1, 0.95])
+    fig.tight_layout(rect=[0, 0.0, 1, 0.93])
     save(fig, "fig_prefill_ttft")
     return 0
 

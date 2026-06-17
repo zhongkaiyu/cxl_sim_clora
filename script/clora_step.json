@@ -1,217 +1,238 @@
 {
   "kind": "decode",
   "model": {
-    "d": 2048,
-    "n_layers": 48,
-    "n_matrices": 28,
+    "d": 4096,
+    "n_layers": 32,
+    "n_matrices": 7,
     "s_dtype": 2
   },
   "hw": {
-    "n_cxl": 32,
+    "n_cxl": 4,
     "s_dtype": 2
   },
   "input_tokens_per_request": 1,
-  "base_model_compute_ns": 37313.432835820895,
+  "base_model_compute_ns": 0.0,
   "kv": {
-    "kv_tokens_total": 12868,
-    "kv_in_gpu_fraction": 0.0
+    "kv_tokens_total": 58102,
+    "kv_in_gpu_fraction": 0.145
   },
   "adapters": [
     {
-      "id": 432,
-      "rank": 8,
-      "batch": 1,
-      "strategy": 1,
-      "kv_tokens": 372
-    },
-    {
-      "id": 6,
-      "rank": 8,
-      "batch": 1,
-      "strategy": 1,
-      "kv_tokens": 501
-    },
-    {
-      "id": 163,
+      "id": 417,
       "rank": 16,
       "batch": 1,
       "strategy": 1,
-      "kv_tokens": 450
+      "kv_tokens": 1631
     },
     {
-      "id": 159,
-      "rank": 64,
+      "id": 861,
+      "rank": 16,
       "batch": 1,
       "strategy": 1,
-      "kv_tokens": 380
+      "kv_tokens": 1652
     },
     {
-      "id": 220,
-      "rank": 64,
-      "batch": 2,
+      "id": 472,
+      "rank": 16,
+      "batch": 1,
       "strategy": 1,
-      "kv_tokens": 818
+      "kv_tokens": 1656
     },
     {
-      "id": 665,
+      "id": 510,
       "rank": 128,
-      "batch": 2,
+      "batch": 1,
       "strategy": 4,
-      "kv_tokens": 803
+      "kv_tokens": 1834
     },
     {
-      "id": 203,
-      "rank": 16,
-      "batch": 1,
-      "strategy": 1,
-      "kv_tokens": 360
-    },
-    {
-      "id": 389,
-      "rank": 8,
-      "batch": 2,
-      "strategy": 1,
-      "kv_tokens": 823
-    },
-    {
-      "id": 753,
-      "rank": 16,
-      "batch": 1,
-      "strategy": 1,
-      "kv_tokens": 287
-    },
-    {
-      "id": 828,
-      "rank": 8,
-      "batch": 2,
-      "strategy": 1,
-      "kv_tokens": 758
-    },
-    {
-      "id": 489,
-      "rank": 8,
-      "batch": 1,
-      "strategy": 1,
-      "kv_tokens": 448
-    },
-    {
-      "id": 758,
-      "rank": 8,
-      "batch": 1,
-      "strategy": 1,
-      "kv_tokens": 491
-    },
-    {
-      "id": 350,
-      "rank": 32,
-      "batch": 1,
-      "strategy": 1,
-      "kv_tokens": 437
-    },
-    {
-      "id": 913,
-      "rank": 16,
-      "batch": 1,
-      "strategy": 1,
-      "kv_tokens": 382
-    },
-    {
-      "id": 95,
+      "id": 722,
       "rank": 64,
       "batch": 1,
       "strategy": 1,
-      "kv_tokens": 371
+      "kv_tokens": 1815
     },
     {
-      "id": 304,
-      "rank": 32,
+      "id": 854,
+      "rank": 64,
       "batch": 1,
       "strategy": 1,
-      "kv_tokens": 403
+      "kv_tokens": 2030
     },
     {
-      "id": 517,
+      "id": 483,
+      "rank": 64,
+      "batch": 1,
+      "strategy": 1,
+      "kv_tokens": 1785
+    },
+    {
+      "id": 564,
+      "rank": 128,
+      "batch": 1,
+      "strategy": 4,
+      "kv_tokens": 1684
+    },
+    {
+      "id": 392,
+      "rank": 128,
+      "batch": 1,
+      "strategy": 4,
+      "kv_tokens": 1731
+    },
+    {
+      "id": 520,
       "rank": 8,
       "batch": 1,
       "strategy": 1,
-      "kv_tokens": 396
+      "kv_tokens": 1675
+    },
+    {
+      "id": 282,
+      "rank": 32,
+      "batch": 1,
+      "strategy": 1,
+      "kv_tokens": 1960
+    },
+    {
+      "id": 956,
+      "rank": 8,
+      "batch": 1,
+      "strategy": 1,
+      "kv_tokens": 1809
+    },
+    {
+      "id": 289,
+      "rank": 128,
+      "batch": 1,
+      "strategy": 4,
+      "kv_tokens": 1841
+    },
+    {
+      "id": 593,
+      "rank": 16,
+      "batch": 1,
+      "strategy": 1,
+      "kv_tokens": 2037
+    },
+    {
+      "id": 457,
+      "rank": 32,
+      "batch": 1,
+      "strategy": 1,
+      "kv_tokens": 2031
+    },
+    {
+      "id": 340,
+      "rank": 64,
+      "batch": 1,
+      "strategy": 1,
+      "kv_tokens": 1922
+    },
+    {
+      "id": 955,
+      "rank": 8,
+      "batch": 1,
+      "strategy": 1,
+      "kv_tokens": 1865
     },
     {
       "id": 890,
-      "rank": 8,
-      "batch": 1,
+      "rank": 16,
+      "batch": 2,
       "strategy": 1,
-      "kv_tokens": 450
+      "kv_tokens": 3367
     },
     {
-      "id": 404,
+      "id": 585,
       "rank": 16,
       "batch": 1,
       "strategy": 1,
-      "kv_tokens": 432
+      "kv_tokens": 1928
     },
     {
-      "id": 30,
-      "rank": 128,
-      "batch": 1,
-      "strategy": 4,
-      "kv_tokens": 296
-    },
-    {
-      "id": 558,
+      "id": 876,
       "rank": 8,
       "batch": 1,
       "strategy": 1,
-      "kv_tokens": 359
+      "kv_tokens": 1956
     },
     {
-      "id": 277,
-      "rank": 16,
-      "batch": 1,
-      "strategy": 1,
-      "kv_tokens": 395
-    },
-    {
-      "id": 344,
-      "rank": 128,
-      "batch": 1,
-      "strategy": 4,
-      "kv_tokens": 378
-    },
-    {
-      "id": 348,
+      "id": 325,
       "rank": 64,
       "batch": 1,
       "strategy": 1,
-      "kv_tokens": 371
+      "kv_tokens": 2020
     },
     {
-      "id": 759,
-      "rank": 16,
+      "id": 395,
+      "rank": 64,
       "batch": 1,
       "strategy": 1,
-      "kv_tokens": 307
+      "kv_tokens": 1691
     },
     {
-      "id": 980,
+      "id": 987,
       "rank": 8,
       "batch": 1,
       "strategy": 1,
-      "kv_tokens": 497
+      "kv_tokens": 1573
     },
     {
-      "id": 429,
+      "id": 129,
+      "rank": 8,
+      "batch": 1,
+      "strategy": 1,
+      "kv_tokens": 1875
+    },
+    {
+      "id": 895,
+      "rank": 64,
+      "batch": 1,
+      "strategy": 1,
+      "kv_tokens": 1986
+    },
+    {
+      "id": 102,
+      "rank": 8,
+      "batch": 1,
+      "strategy": 1,
+      "kv_tokens": 2003
+    },
+    {
+      "id": 739,
+      "rank": 64,
+      "batch": 1,
+      "strategy": 1,
+      "kv_tokens": 1683
+    },
+    {
+      "id": 891,
+      "rank": 8,
+      "batch": 1,
+      "strategy": 1,
+      "kv_tokens": 1694
+    },
+    {
+      "id": 480,
       "rank": 32,
       "batch": 1,
       "strategy": 1,
-      "kv_tokens": 500
+      "kv_tokens": 1807
     },
     {
-      "id": 94,
+      "id": 638,
       "rank": 8,
       "batch": 1,
       "strategy": 1,
-      "kv_tokens": 403
+      "kv_tokens": 1943
+    },
+    {
+      "id": 665,
+      "rank": 8,
+      "batch": 1,
+      "strategy": 1,
+      "kv_tokens": 1618
     }
   ]
 }

@@ -7,33 +7,33 @@
     "rows": [
       {
         "x": 200,
-        "Uniform": 4422.9,
-        "Uniform-long": 2793.8
+        "Uniform": 7657.1,
+        "Uniform-long": 3442.5
       },
       {
         "x": 400,
-        "Uniform": 4422.9,
-        "Uniform-long": 2790.7
+        "Uniform": 7657.1,
+        "Uniform-long": 3437.7
       },
       {
         "x": 800,
-        "Uniform": 4422.9,
-        "Uniform-long": 2784.4
+        "Uniform": 7657.1,
+        "Uniform-long": 3428.3
       },
       {
         "x": 1600,
-        "Uniform": 4422.9,
-        "Uniform-long": 2772.1
+        "Uniform": 7657.1,
+        "Uniform-long": 3409.6
       },
       {
         "x": 3200,
-        "Uniform": 4422.9,
-        "Uniform-long": 2747.7
+        "Uniform": 7657.1,
+        "Uniform-long": 3372.8
       },
       {
         "x": 6400,
-        "Uniform": 4422.9,
-        "Uniform-long": 2700.2
+        "Uniform": 7657.1,
+        "Uniform-long": 3301.5
       }
     ],
     "model": "per-layer: step = max(step_full, cxl_path + n_layers*2*L), n_layers=32"
@@ -46,48 +46,48 @@
     "rows": [
       {
         "x": 2,
-        "Uniform": 702.5,
-        "Uniform-long": 801.3
+        "Uniform": 825.5,
+        "Uniform-long": 815.7
       },
       {
         "x": 4,
-        "Uniform": 1404.5,
-        "Uniform-long": 1596.3
+        "Uniform": 1650.9,
+        "Uniform-long": 1787.5
       },
       {
         "x": 8,
-        "Uniform": 2950.8,
-        "Uniform-long": 2542.2
+        "Uniform": 3607.5,
+        "Uniform-long": 3068.2
       },
       {
         "x": 16,
-        "Uniform": 4422.9,
-        "Uniform-long": 2705.8
+        "Uniform": 6896.5,
+        "Uniform-long": 3320.2
       },
       {
         "x": 32,
-        "Uniform": 4422.9,
-        "Uniform-long": 2755.8
+        "Uniform": 7657.1,
+        "Uniform-long": 3404.4
       },
       {
         "x": 64,
-        "Uniform": 4422.9,
-        "Uniform-long": 2782.8
+        "Uniform": 7657.1,
+        "Uniform-long": 3435.3
       },
       {
         "x": 128,
-        "Uniform": 4422.9,
-        "Uniform-long": 2795.7
+        "Uniform": 7657.1,
+        "Uniform-long": 3447.2
       },
       {
         "x": 256,
-        "Uniform": 4422.9,
-        "Uniform-long": 2801.0
+        "Uniform": 7657.1,
+        "Uniform-long": 3454.4
       },
       {
         "x": 512,
-        "Uniform": 4422.9,
-        "Uniform-long": 2803.7
+        "Uniform": 7657.1,
+        "Uniform-long": 3458.0
       }
     ]
   },
@@ -99,33 +99,33 @@
     "rows": [
       {
         "x": 0.25,
-        "Uniform": 2374.5,
-        "Uniform-long": 639.5
+        "Uniform": 2583.8,
+        "Uniform-long": 788.7
       },
       {
         "x": 0.5,
-        "Uniform": 4369.3,
-        "Uniform-long": 1268.3
+        "Uniform": 5108.6,
+        "Uniform-long": 1564.1
       },
       {
         "x": 1.0,
-        "Uniform": 4422.9,
-        "Uniform-long": 2481.9
+        "Uniform": 7657.1,
+        "Uniform-long": 3059.9
       },
       {
         "x": 2.0,
-        "Uniform": 4422.9,
-        "Uniform-long": 2756.0
+        "Uniform": 7657.1,
+        "Uniform-long": 3397.2
       },
       {
         "x": 4.0,
-        "Uniform": 4422.9,
-        "Uniform-long": 2775.4
+        "Uniform": 7657.1,
+        "Uniform-long": 3422.0
       },
       {
         "x": 8.0,
-        "Uniform": 4422.9,
-        "Uniform-long": 2785.5
+        "Uniform": 7657.1,
+        "Uniform-long": 3434.6
       }
     ]
   },
@@ -137,38 +137,38 @@
     "rows": [
       {
         "x": 64,
-        "Uniform": 612.7,
-        "Uniform-long": 165.1
+        "Uniform": 666.6,
+        "Uniform-long": 203.6
       },
       {
         "x": 136,
-        "Uniform": 1300.5,
-        "Uniform-long": 350.7
+        "Uniform": 1415.0,
+        "Uniform-long": 432.5
       },
       {
         "x": 272,
-        "Uniform": 2595.8,
-        "Uniform-long": 701.0
+        "Uniform": 2824.4,
+        "Uniform-long": 864.6
       },
       {
         "x": 544,
-        "Uniform": 4419.1,
-        "Uniform-long": 1400.6
+        "Uniform": 5625.9,
+        "Uniform-long": 1727.3
       },
       {
         "x": 1088,
-        "Uniform": 4422.9,
-        "Uniform-long": 2795.7
+        "Uniform": 7657.1,
+        "Uniform-long": 3447.2
       },
       {
         "x": 2176,
-        "Uniform": 4422.9,
-        "Uniform-long": 3011.2
+        "Uniform": 7657.1,
+        "Uniform-long": 3682.1
       },
       {
         "x": 4352,
-        "Uniform": 4422.9,
-        "Uniform-long": 3011.2
+        "Uniform": 7657.1,
+        "Uniform-long": 3682.1
       }
     ]
   },
@@ -180,33 +180,33 @@
     "rows": [
       {
         "x": 1,
-        "Uniform": 4423.0,
-        "Uniform-long": 2756.0
+        "Uniform": 7657.1,
+        "Uniform-long": 3394.0
       },
       {
         "x": 2,
-        "Uniform": 4423.0,
-        "Uniform-long": 2802.0
+        "Uniform": 7657.1,
+        "Uniform-long": 3456.4
       },
       {
         "x": 4,
-        "Uniform": 4423.0,
-        "Uniform-long": 2800.0
+        "Uniform": 7657.1,
+        "Uniform-long": 3454.1
       },
       {
         "x": 8,
-        "Uniform": 4423.0,
-        "Uniform-long": 2796.0
+        "Uniform": 7657.1,
+        "Uniform-long": 3447.2
       },
       {
         "x": 16,
-        "Uniform": 4423.0,
-        "Uniform-long": 2785.0
+        "Uniform": 7657.1,
+        "Uniform-long": 3437.0
       },
       {
         "x": 32,
-        "Uniform": 4423.0,
-        "Uniform-long": 2762.0
+        "Uniform": 7657.1,
+        "Uniform-long": 3412.7
       }
     ]
   }

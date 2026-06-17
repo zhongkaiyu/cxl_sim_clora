@@ -36,11 +36,17 @@ TPUT_RE = re.compile(
     r"^CLoRA\s+tokens=\d+\s+sim_time=[\d.,]+ ms\s+throughput=([\d,]+\.?\d*)",
     re.MULTILINE)
 
+# Platform via env (default A100); set SENS_* for an H100 run.
+GPU_TFLOPS = os.environ.get("SENS_TFLOPS", "312")     # H100: 989
+GPU_MEMBW = os.environ.get("SENS_MEMBW", "1935")      # H100: 3350
+GPU_MEMGB = os.environ.get("SENS_GPUMEM", "26")       # H100: 66 (80-14)
+OUT_FILE = os.environ.get("SENS_OUT", "sensitivity_abs.json")
+
 BASE = ["--steps", "10", "--warmup-steps", "10", "--batch", str(BATCH),
         "--n-adapters", "1000", "--dist", "uniform",
-        "--gpu-mem-gb", "26", "--base-model-gb", "14",
+        "--gpu-mem-gb", GPU_MEMGB, "--base-model-gb", "14",
         "--model-d", "4096", "--n-layers", "32",
-        "--gpu-compute-tflops", "312", "--gpu-mem-bw-gb", "1935",
+        "--gpu-compute-tflops", GPU_TFLOPS, "--gpu-mem-bw-gb", GPU_MEMBW,
         "--top-k-hot", "50", "--seed", "42"]
 WORKLOADS = {"Uniform": ("100", "1024"), "Uniform-long": ("2048", "4096")}
 
@@ -122,9 +128,9 @@ def main():
             print(f"{knob:15s} x={x:<8} Uniform={row['Uniform']:>8,.0f}  "
                   f"Uniform-long={row['Uniform-long']:>8,.0f}  "
                   f"({time.time()-t0:4.0f}s)", flush=True)
-    with open(os.path.join(HERE, "sensitivity_abs.json"), "w") as f:
+    with open(os.path.join(HERE, OUT_FILE), "w") as f:
         json.dump(out, f, indent=2)
-    print(f"\nwrote script/sensitivity_abs.json ({time.time()-t0:.0f}s)")
+    print(f"\nwrote script/{OUT_FILE} ({time.time()-t0:.0f}s)")
     return 0
 
 

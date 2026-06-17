@@ -7,5 +7,6 @@
   "Uniform":      {"tpot_mean_s": 0.05455706864595413, "tpot_p50_s": 0.06300026178359985, "tpot_p90_s": 0.0660506820678711},
   "Uniform-long": {"tpot_mean_s": 0.0546523205935955,  "tpot_p50_s": 0.05337069034576416, "tpot_p90_s": 0.06962798595428467},
   "Skewed":       {"tpot_mean_s": 0.053383248299360274,"tpot_p50_s": 0.056193435192108156,"tpot_p90_s": 0.06177159786224365},
-  "Skewed-long":  {"tpot_mean_s": 0.05092904567718506, "tpot_p50_s": 0.049272668361663816,"tpot_p90_s": 0.06020498275756836}
+  "Skewed-long":  {"tpot_mean_s": 0.05092904567718506, "tpot_p50_s": 0.049272668361663816,"tpot_p90_s": 0.06020498275756836},
+  "LMSYS":        {"tpot_mean_s": 0.0162, "_note": "real S-LoRA H100, LMSYS Chatbot Arena trace, 25 adapters"}
 }

@@ -399,6 +399,11 @@ def run_smoke(args: argparse.Namespace) -> None:
             n_layers=args.n_layers,
             kv_tokens_in_gpu=int(kv_in_gpu_fraction * total_kv_tokens),
             **moe_kwargs)
+        # Diagnostic: zero the GPU base-model compute so the C sim reports the
+        # CXL-side path alone (used to isolate the CXL critical path for the
+        # per-layer latency model in the latency sensitivity study).
+        if args.zero_base_compute:
+            base_ns_per_layer = 0.0
 
         payload = emit_step_json(
             "decode", model, hw, decisions, state,
@@ -679,6 +684,11 @@ def main() -> int:
                     help="Number of CLoRA (CXL) memory devices N_CXL "
                          "(default 4, paper Table 4). For >16, pass a "
                          "--c-parameter-file with cxl_channel_number >= N_CXL.")
+    ap.add_argument("--zero-base-compute", action="store_true",
+                    help="Diagnostic: set the GPU base-model NPU_COMPUTE to 0 so "
+                         "the reported step time is the CXL-side path alone. Used "
+                         "to isolate the CXL critical path for the per-layer "
+                         "latency model (latency sensitivity study).")
     ap.add_argument("--c-parameter-file", type=str, default=None,
                     help="Override the C sim's parameter file "
                          "(default: config/parameters.conf). The sensitivity "

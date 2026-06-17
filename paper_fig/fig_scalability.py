@@ -40,7 +40,7 @@ def sweet_point(series):
 
 def main():
     d = json.load(open(os.path.join(SCRIPT, "results_scalability.json")))
-    fig, axes = plt.subplots(1, len(MODELS), figsize=(5.4, 3.1), squeeze=False)
+    fig, axes = plt.subplots(1, len(MODELS), figsize=(7.5, 4.4), squeeze=False)
     axes = axes[0]
     print("sweet points (smallest N_CXL >= 99% of ceiling):")
     for idx, (ax, m) in enumerate(zip(axes, MODELS)):

@@ -41,7 +41,15 @@ def _make(sens, metric):
         s = sens[knob]
         rows = sorted(s["rows"], key=lambda r: r["x"])
         xs = [r["x"] for r in rows]
-        for wkey, wlabel, color, marker in WORKLOADS:
+        # panels with their own "series" list (e.g. ndp_buffer: two latency
+        # regimes) are plotted with those keys; others use the two workloads.
+        if s.get("series"):
+            palette = [("#2ca02c", "o"), ("#9467bd", "^")]
+            plot_series = [(name, name, palette[k % 2][0], palette[k % 2][1])
+                           for k, name in enumerate(s["series"])]
+        else:
+            plot_series = WORKLOADS
+        for wkey, wlabel, color, marker in plot_series:
             ys = [(BATCH / r[wkey] * 1000 if metric == "tpot" else r[wkey])
                   for r in rows]
             ax.plot(xs, ys, marker=marker, color=color, linewidth=1.7,

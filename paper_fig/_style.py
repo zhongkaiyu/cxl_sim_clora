@@ -18,14 +18,17 @@ import matplotlib.pyplot as plt
 FIGDIR = os.path.dirname(os.path.abspath(__file__))
 
 # ---- single uniform font size ------------------------------------------------
-SIZE = 9
+# These wide multi-panel figures are included at the paper's full text width, so
+# the source figure is ~2x wider than its printed size and gets scaled down.
+# SIZE is therefore set large (~2x body) so the printed font reads at body size.
+SIZE = 18
 plt.rcParams.update({
     "font.size": SIZE, "axes.titlesize": SIZE, "axes.labelsize": SIZE,
     "xtick.labelsize": SIZE, "ytick.labelsize": SIZE, "legend.fontsize": SIZE,
     "figure.titlesize": SIZE, "font.family": "serif",
-    "mathtext.fontset": "dejavuserif", "axes.linewidth": 0.6,
-    "xtick.major.width": 0.6, "ytick.major.width": 0.6, "pdf.fonttype": 42,
-    "ps.fonttype": 42,
+    "mathtext.fontset": "dejavuserif", "axes.linewidth": 0.8,
+    "xtick.major.width": 0.8, "ytick.major.width": 0.8, "pdf.fonttype": 42,
+    "ps.fonttype": 42, "lines.linewidth": 1.8, "lines.markersize": 5,
 })
 
 # ---- superscript-unit axis labels --------------------------------------------
@@ -33,14 +36,14 @@ TPOT_LABEL = r"TPOT (ms$\cdot$token$^{-1}$) $\downarrow$"
 TPUT_LABEL = r"Throughput (tokens$\cdot$s$^{-1}$) $\uparrow$"
 TTFT_LABEL = r"TTFT (s) $\downarrow$"
 
-# ---- consistent system styling (order = legend order) ------------------------
+# ---- consistent system styling (order = legend AND bar order, left->right) ---
 # (json key, legend label, color)
 SYSTEMS = [
+    ("SLoRA",       "S-LoRA",           "#ff7f0e"),
+    ("CPULoRA",     "CPU-LoRA-Offload", "#7f7f7f"),
+    ("GraceHopper", "Grace-Hopper",     "#2ca02c"),
     ("CLoRA",       "CLoRA",            "#d62728"),
     ("NoCXL",       "CLoRA-NoCXL",      "#1f77b4"),
-    ("GraceHopper", "Grace-Hopper",     "#2ca02c"),
-    ("CPULoRA",     "CPU-LoRA-Offload", "#7f7f7f"),
-    ("SLoRA",       "S-LoRA (real H100)", "#ff7f0e"),
 ]
 
 MODEL_TAGS = {
@@ -53,10 +56,16 @@ MODEL_TAGS = {
 _LETTERS = "abcdefghijklmnop"
 
 
-def panel_caption(ax, idx, text):
+def panel_caption(ax, idx, text, dy=-0.34):
     """Sub-caption centred under the panel (replaces a title)."""
-    ax.text(0.5, -0.34, f"({_LETTERS[idx]}) {text}", transform=ax.transAxes,
+    ax.text(0.5, dy, f"({_LETTERS[idx]}) {text}", transform=ax.transAxes,
             ha="center", va="top", fontsize=SIZE)
+
+
+def panel_xlabel(ax, idx, text, pad=22):
+    """Sub-caption as the x-axis label (robustly placed BELOW the tick labels
+    by matplotlib; ``pad`` is the gap from the tick labels)."""
+    ax.set_xlabel(f"({_LETTERS[idx]}) {text}", labelpad=pad)
 
 
 def clean_axis(ax, log=True):
