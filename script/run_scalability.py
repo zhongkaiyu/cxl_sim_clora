@@ -30,19 +30,20 @@ DRIVER = os.path.join(HERE, "clora_driver.py")
 BASE_CONF = os.path.join(ROOT, "config", "parameters.conf")
 TRIALS = 3
 BATCH = 32
-DEVICE_COUNTS = [1, 2, 4, 8, 16, 32]
+# max 64: the C sim allocates per-channel structures, so cxl_channel_number>=128
+# (needed for 128 devices) OOMs / gets SIGKILL'd. 64 channels is the safe ceiling.
+# Intermediate points 40/48/56 resolve the beyond-knee dip.
+DEVICE_COUNTS = [1, 2, 4, 8, 16, 32, 40, 48, 56, 64]
 
 TPUT_RE = re.compile(
     r"^CLoRA\s+tokens=\d+\s+sim_time=[\d.,]+ ms\s+throughput=([\d,]+\.?\d*)",
     re.MULTILINE)
 
-# H100 80GB; budget = 80 - resident base. Fig 17 = LARGER models (13B / 30B).
+# H100 80GB; budget = 80 - resident base. Fig 17 = Llama2-13B (the plotted
+# model). Qwen3-30B dropped: noisy/non-monotone AND segfaults at N_CXL=64.
 MODELS = {
     "Llama2-13B": dict(flags=["--model-d", "5120", "--n-layers", "40"],
                        base=26, budget=54, gqa=1),
-    "Qwen3-30B":  dict(flags=["--model-d", "2048", "--n-layers", "48",
-                              "--n-matrices", "28", "--moe-active-base-gb", "6"],
-                       base=60, budget=74, gqa=8),   # GQA+MoE; resident 6 GB
 }
 WORKLOADS = {
     "Uniform":      ("uniform", 100, 1024),

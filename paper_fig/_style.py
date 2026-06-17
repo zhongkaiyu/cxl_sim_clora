@@ -31,10 +31,11 @@ plt.rcParams.update({
     "ps.fonttype": 42, "lines.linewidth": 1.8, "lines.markersize": 5,
 })
 
-# ---- superscript-unit axis labels --------------------------------------------
-TPOT_LABEL = r"TPOT (ms$\cdot$token$^{-1}$) $\downarrow$"
-TPUT_LABEL = r"Throughput (tokens$\cdot$s$^{-1}$) $\uparrow$"
-TTFT_LABEL = r"TTFT (s) $\downarrow$"
+# ---- superscript-unit axis labels (direction "lower/higher better" in caption,
+# not on the axis -- the trailing arrow floated above the short plot area) ------
+TPOT_LABEL = r"TPOT (ms$\cdot$token$^{-1}$)"
+TPUT_LABEL = r"Throughput (tokens$\cdot$s$^{-1}$)"
+TTFT_LABEL = r"TTFT (s)"
 
 # ---- consistent system styling (order = legend AND bar order, left->right) ---
 # (json key, legend label, color)

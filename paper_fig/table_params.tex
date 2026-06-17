@@ -1,0 +1,34 @@
+% Cost-model parameters with the values used in our experiments (blue).
+% Requires \usepackage{xcolor} (and booktabs).
+\begin{table}[t!]
+\centering
+\caption{Summary of parameters in the cost model. \textcolor{blue}{Blue: the
+values used in our experiments} (GPU = H100; the sensitivity study uses A100,
+$C_{\text{GPU}}=312$\,TFLOPS, $W_{\text{GPU}}=1935$\,GB/s). Workload-dependent
+values: $N=25$ and $L_i\in[2,430]$ for the LMSYS trace; $B\in\{256,512,1024\}$
+for prefill; $L_i\in[100,1024]$ (short) / $[2048,4096]$ (long) for synthetic
+decode; $D=4096$/$5120$/$2048$ for 7--8B/13B/Qwen3-30B.}
+\label{table: 6_parameters}
+\resizebox{0.48\textwidth}{!}{
+\begin{tabular}{@{}clc@{}}
+\toprule
+Operator     & Description                          & \textcolor{blue}{Value (ours)} \\ \midrule
+$N_{\text{CXL}}$   & Number of CXL devices     & \textcolor{blue}{4} \\
+$L_{\text{CXL}}$   & Latency of CXL devices     & \textcolor{blue}{200\,ns} \\
+$C_{\text{GPU}}$   & Compute power of GPU & \textcolor{blue}{989\,TFLOPS} \\
+$C_{\text{CXL}}$   & Compute power of each CXL devices & \textcolor{blue}{2\,TFLOPS} \\
+$N$ & Number of LoRA adapters  & \textcolor{blue}{1000} \\
+$B_{ij}$        & Batch size of $i^{\text{th}}$ LoRA adapter using execution strategy $j$ & \textcolor{blue}{$0$--$256$} \\
+$B$& Total batch size, $B = \Sigma_{i=1}^{N}\Sigma_{j=1}^{4} B_{ij}$ & \textcolor{blue}{32} \\
+$R_{i}$        & LoRA dimension of $i^{\text{th}}$ LoRA adapter & \textcolor{blue}{$\{8,16,32,64,128\}$} \\
+$D$  & Model dimension             & \textcolor{blue}{4096} \\
+$P_{\text{KV}}$  & Proportion of KV cache stored in GPU DRAM & \textcolor{blue}{$0$--$16\%$} \\
+$L_i$ & Length of KV cache for $i^{\text{th}}$ request, $i\in\left[1, B\right]$ & \textcolor{blue}{$100$--$4096$} \\
+$S$  & Size of each value / B ($S=2$ for FP16) & \textcolor{blue}{2} \\
+$W_{\text{GPU}}$  & Bandwidth of GPU HBM             & \textcolor{blue}{3350\,GB/s} \\
+$W_{\text{CXL}}$  & Bandwidth of CXL channel             & \textcolor{blue}{128\,GB/s} \\
+$W_{\text{DRAM}}$ & Bandwidth of DRAM in each CXL device & \textcolor{blue}{1.1\,TB/s} \\
+\bottomrule
+\end{tabular}
+}
+\end{table}

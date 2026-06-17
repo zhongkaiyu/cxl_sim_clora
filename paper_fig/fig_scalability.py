@@ -40,7 +40,7 @@ def sweet_point(series):
 
 def main():
     d = json.load(open(os.path.join(SCRIPT, "results_scalability.json")))
-    fig, axes = plt.subplots(1, len(MODELS), figsize=(7.5, 4.4), squeeze=False)
+    fig, axes = plt.subplots(1, len(MODELS), figsize=(7.5, 5.0), squeeze=False)
     axes = axes[0]
     print("sweet points (smallest N_CXL >= 99% of ceiling):")
     for idx, (ax, m) in enumerate(zip(axes, MODELS)):
@@ -53,18 +53,18 @@ def main():
             sp = sweet_point(series)
             print(f"  {m:11s} {wkey:13s} -> N_CXL={sp}")
         ax.set_xscale("log", base=2)
-        ax.set_xticks([1, 2, 4, 8, 16, 32])
-        ax.set_xticklabels([1, 2, 4, 8, 16, 32])
+        ax.set_xticks([1, 2, 4, 8, 16, 32, 64])
+        ax.set_xticklabels([1, 2, 4, 8, 16, 32, 64])
         ax.axvline(PAPER_DEFAULT, color="gray", ls=":", lw=0.8)
         clean_axis(ax, log=False)
         ax.set_xlabel(r"Number of CXL devices $N_{\mathrm{CXL}}$")
         panel_caption(ax, idx, MODEL_TAGS[m])
         if idx == 0:
-            ax.set_ylabel(TPUT_LABEL)
+            ax.set_ylabel(TPUT_LABEL, y=0.45)   # nudge down: clear the legend
     h, l = axes[0].get_legend_handles_labels()
-    fig.legend(h, l, loc="upper center", ncol=4, bbox_to_anchor=(0.5, 1.08),
+    fig.legend(h, l, loc="upper center", ncol=4, bbox_to_anchor=(0.5, 1.14),
                frameon=False, columnspacing=1.4, handlelength=1.8)
-    fig.tight_layout(rect=[0, 0.04, 1, 0.94])
+    fig.tight_layout(rect=[0, 0.04, 1, 0.88])
     save(fig, "fig_scalability")
     return 0
 

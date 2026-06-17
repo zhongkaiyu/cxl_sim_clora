@@ -81,8 +81,12 @@ Y = TTFT (s), log, ↓ lower is better. H100, GPU forward pass at **75% MFU**
 
 ## Fig. `fig_scalability` — CXL device-count scalability (paper Fig 17, H100)
 
-**Llama2-13B (MHA)**, N_CXL ∈ {1,2,4,8,16,32}, 4 workloads. Y = decode
-throughput (tokens·s⁻¹), ↑. Dotted line = paper's default N_CXL = 4.
+**Llama2-13B (MHA)**, N_CXL ∈ {1,2,4,8,16,32,40,48,56,64}, 4 workloads. Y =
+decode throughput (tokens·s⁻¹), ↑. Dotted line = paper's default N_CXL = 4.
+The curve **rises → plateaus → dips**: it climbs to the HBM ceiling by N_CXL=16,
+holds through ~40, then **declines beyond ~48** (over-distribution overhead).
+(N_CXL is capped at 64: the C sim allocates per-channel structures and OOMs above
+~64 channels.)
 
 **New sweet point (H100, smallest N_CXL reaching ≥99% of the HBM ceiling
 4,123 tok/s):**
@@ -99,25 +103,27 @@ paper's A100 answer of 4–16): H100's faster HBM (3350 vs 1935 GB/s) lowers the
 base-model floor, so the CXL side must keep up with a shorter step → more
 devices. Short-context is saturated by the paper default of 4.
 
-**Qwen3-30B excluded from the figure (reported in text):** its MoE active
-footprint is only 6 GB, so the GPU HBM ceiling (≈17.9k tok/s) is already
-saturated at **N_CXL = 1–2**. Beyond that, more devices cannot help and the
-cost model's strategy re-selection adds un-hidden CXL overhead, making the
-curve non-monotone (noise, not a scaling trend). **Finding:** MoE
-active-parameter models need only **1–2 CXL devices**; the data is in
-`results_scalability.json` for reference.
+**Beyond-knee dip (the paper's Fig 17 decline, now reproduced):** past ~40
+devices throughput *declines* (long-context 4,123 → ~3,070 at N_CXL=64;
+short-context → ~2,520). The dip is gradual (verified with intermediate
+40/48/56 points — not a boundary artifact at N_CXL = channel count). **Cause:**
+over-distribution — splitting the KV across more devices stops helping (each
+slice is tiny, GPU HBM caps throughput) while per-device coordination grows
+(every device still needs the full query/output transferred + per-layer fixed
+latency, and the GPU gathers partial attention outputs from all N_CXL devices
+each layer). So the optimum is a *band* (~16–32), not "more is always better."
 
-**Modeling note (state in text):** each device gets its own CXL channel, so
-throughput **saturates** at the HBM ceiling past the knee rather than
-declining; the paper's beyond-knee drop comes from a single shared
-GPU↔switch aggregation link, which we do not model. We report the saturation
-honestly.
+**Qwen3-30B excluded:** its MoE active footprint is only 6 GB, so it saturates
+the GPU HBM ceiling at N_CXL = 1–2; its curve is also non-monotone (strategy
+re-selection noise) and it **segfaults at N_CXL = 64**. Finding (text only):
+MoE active-parameter models need only 1–2 CXL devices.
 
 **LaTeX caption:**
 > Decode throughput vs number of CXL memory devices on H100, Llama2-13B
-> (higher is better). Long-context (Uniform-long / Skewed-long) workloads
-> benefit from more devices up to N_CXL = 16, after which throughput saturates
-> at the GPU HBM ceiling; short-context workloads saturate by N_CXL = 4.
+> (higher is better). Throughput rises to the GPU-HBM ceiling by N_CXL≈16,
+> plateaus through ≈40, then declines beyond ≈48 as per-device coordination
+> overhead (full query/output replication and partial-output aggregation across
+> all devices) overtakes the diminishing benefit of finer KV splitting.
 
 **Sub-caption:** (a) Llama2-13B (MHA).
 

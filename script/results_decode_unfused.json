@@ -166,19 +166,19 @@
         "CPULoRA": 324.3
       },
       "Uniform-long": {
-        "CLoRA": 6700.0,
+        "CLoRA": 5714.3,
         "NoCXL": 679.2,
         "GraceHopper": 718.7,
         "CPULoRA": 152.9
       },
       "Skewed": {
-        "CLoRA": 6700.0,
+        "CLoRA": 6956.5,
         "NoCXL": 764.7,
         "GraceHopper": 2653.6,
         "CPULoRA": 529.1
       },
       "Skewed-long": {
-        "CLoRA": 6700.0,
+        "CLoRA": 5818.2,
         "NoCXL": 772.9,
         "GraceHopper": 906.7,
         "CPULoRA": 195.6

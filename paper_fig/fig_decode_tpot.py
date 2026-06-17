@@ -82,7 +82,7 @@ def main():
         ax.set_xticklabels([WLAB[w] for w in WL], rotation=30, ha="right")
         ax.set_ylim(top=ax.get_ylim()[1] * 2.0)
         panel_xlabel(ax, idx, MODEL_TAGS[m], pad=26)
-    axes[0].set_ylabel(TPOT_LABEL)
+    axes[0].set_ylabel(TPOT_LABEL, y=0.62)   # shift up so it clears the x-ticks
     h, l = axes[0].get_legend_handles_labels()
     fig.legend(h, l, loc="upper center", ncol=5, bbox_to_anchor=(0.5, 1.11),
                frameon=False, columnspacing=1.2, handlelength=1.4)

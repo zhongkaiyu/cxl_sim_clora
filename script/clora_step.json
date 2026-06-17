@@ -1,238 +1,217 @@
 {
   "kind": "decode",
   "model": {
-    "d": 4096,
-    "n_layers": 32,
+    "d": 5120,
+    "n_layers": 40,
     "n_matrices": 7,
     "s_dtype": 2
   },
   "hw": {
-    "n_cxl": 4,
+    "n_cxl": 64,
     "s_dtype": 2
   },
   "input_tokens_per_request": 1,
-  "base_model_compute_ns": 0.0,
+  "base_model_compute_ns": 194029.85074626864,
   "kv": {
-    "kv_tokens_total": 58102,
-    "kv_in_gpu_fraction": 0.145
+    "kv_tokens_total": 101343,
+    "kv_in_gpu_fraction": 0.0
   },
   "adapters": [
     {
-      "id": 417,
+      "id": 163,
       "rank": 16,
       "batch": 1,
       "strategy": 1,
-      "kv_tokens": 1631
+      "kv_tokens": 3605
     },
     {
-      "id": 861,
-      "rank": 16,
-      "batch": 1,
-      "strategy": 1,
-      "kv_tokens": 1652
-    },
-    {
-      "id": 472,
-      "rank": 16,
-      "batch": 1,
-      "strategy": 1,
-      "kv_tokens": 1656
-    },
-    {
-      "id": 510,
-      "rank": 128,
-      "batch": 1,
-      "strategy": 4,
-      "kv_tokens": 1834
-    },
-    {
-      "id": 722,
+      "id": 159,
       "rank": 64,
       "batch": 1,
-      "strategy": 1,
-      "kv_tokens": 1815
-    },
-    {
-      "id": 854,
-      "rank": 64,
-      "batch": 1,
-      "strategy": 1,
-      "kv_tokens": 2030
-    },
-    {
-      "id": 483,
-      "rank": 64,
-      "batch": 1,
-      "strategy": 1,
-      "kv_tokens": 1785
-    },
-    {
-      "id": 564,
-      "rank": 128,
-      "batch": 1,
       "strategy": 4,
-      "kv_tokens": 1684
+      "kv_tokens": 3040
     },
     {
-      "id": 392,
-      "rank": 128,
-      "batch": 1,
-      "strategy": 4,
-      "kv_tokens": 1731
-    },
-    {
-      "id": 520,
-      "rank": 8,
-      "batch": 1,
-      "strategy": 1,
-      "kv_tokens": 1675
-    },
-    {
-      "id": 282,
-      "rank": 32,
-      "batch": 1,
-      "strategy": 1,
-      "kv_tokens": 1960
-    },
-    {
-      "id": 956,
-      "rank": 8,
-      "batch": 1,
-      "strategy": 1,
-      "kv_tokens": 1809
-    },
-    {
-      "id": 289,
-      "rank": 128,
-      "batch": 1,
-      "strategy": 4,
-      "kv_tokens": 1841
-    },
-    {
-      "id": 593,
-      "rank": 16,
-      "batch": 1,
-      "strategy": 1,
-      "kv_tokens": 2037
-    },
-    {
-      "id": 457,
-      "rank": 32,
-      "batch": 1,
-      "strategy": 1,
-      "kv_tokens": 2031
-    },
-    {
-      "id": 340,
+      "id": 220,
       "rank": 64,
-      "batch": 1,
-      "strategy": 1,
-      "kv_tokens": 1922
-    },
-    {
-      "id": 955,
-      "rank": 8,
-      "batch": 1,
-      "strategy": 1,
-      "kv_tokens": 1865
-    },
-    {
-      "id": 890,
-      "rank": 16,
       "batch": 2,
-      "strategy": 1,
-      "kv_tokens": 3367
-    },
-    {
-      "id": 585,
-      "rank": 16,
-      "batch": 1,
-      "strategy": 1,
-      "kv_tokens": 1928
-    },
-    {
-      "id": 876,
-      "rank": 8,
-      "batch": 1,
-      "strategy": 1,
-      "kv_tokens": 1956
-    },
-    {
-      "id": 325,
-      "rank": 64,
-      "batch": 1,
-      "strategy": 1,
-      "kv_tokens": 2020
-    },
-    {
-      "id": 395,
-      "rank": 64,
-      "batch": 1,
-      "strategy": 1,
-      "kv_tokens": 1691
-    },
-    {
-      "id": 987,
-      "rank": 8,
-      "batch": 1,
-      "strategy": 1,
-      "kv_tokens": 1573
-    },
-    {
-      "id": 129,
-      "rank": 8,
-      "batch": 1,
-      "strategy": 1,
-      "kv_tokens": 1875
-    },
-    {
-      "id": 895,
-      "rank": 64,
-      "batch": 1,
-      "strategy": 1,
-      "kv_tokens": 1986
-    },
-    {
-      "id": 102,
-      "rank": 8,
-      "batch": 1,
-      "strategy": 1,
-      "kv_tokens": 2003
-    },
-    {
-      "id": 739,
-      "rank": 64,
-      "batch": 1,
-      "strategy": 1,
-      "kv_tokens": 1683
-    },
-    {
-      "id": 891,
-      "rank": 8,
-      "batch": 1,
-      "strategy": 1,
-      "kv_tokens": 1694
-    },
-    {
-      "id": 480,
-      "rank": 32,
-      "batch": 1,
-      "strategy": 1,
-      "kv_tokens": 1807
-    },
-    {
-      "id": 638,
-      "rank": 8,
-      "batch": 1,
-      "strategy": 1,
-      "kv_tokens": 1943
+      "strategy": 4,
+      "kv_tokens": 6548
     },
     {
       "id": 665,
+      "rank": 128,
+      "batch": 2,
+      "strategy": 4,
+      "kv_tokens": 6430
+    },
+    {
+      "id": 203,
+      "rank": 16,
+      "batch": 1,
+      "strategy": 1,
+      "kv_tokens": 2883
+    },
+    {
+      "id": 389,
+      "rank": 8,
+      "batch": 2,
+      "strategy": 1,
+      "kv_tokens": 6590
+    },
+    {
+      "id": 753,
+      "rank": 16,
+      "batch": 1,
+      "strategy": 1,
+      "kv_tokens": 2303
+    },
+    {
+      "id": 828,
+      "rank": 8,
+      "batch": 2,
+      "strategy": 1,
+      "kv_tokens": 6073
+    },
+    {
+      "id": 489,
       "rank": 8,
       "batch": 1,
       "strategy": 1,
-      "kv_tokens": 1618
+      "kv_tokens": 3591
+    },
+    {
+      "id": 758,
+      "rank": 8,
+      "batch": 1,
+      "strategy": 1,
+      "kv_tokens": 3930
+    },
+    {
+      "id": 350,
+      "rank": 32,
+      "batch": 1,
+      "strategy": 1,
+      "kv_tokens": 3499
+    },
+    {
+      "id": 913,
+      "rank": 16,
+      "batch": 1,
+      "strategy": 1,
+      "kv_tokens": 3057
+    },
+    {
+      "id": 95,
+      "rank": 64,
+      "batch": 1,
+      "strategy": 4,
+      "kv_tokens": 2969
+    },
+    {
+      "id": 304,
+      "rank": 32,
+      "batch": 1,
+      "strategy": 1,
+      "kv_tokens": 3231
+    },
+    {
+      "id": 517,
+      "rank": 8,
+      "batch": 1,
+      "strategy": 1,
+      "kv_tokens": 3168
+    },
+    {
+      "id": 890,
+      "rank": 8,
+      "batch": 1,
+      "strategy": 1,
+      "kv_tokens": 3603
+    },
+    {
+      "id": 404,
+      "rank": 16,
+      "batch": 1,
+      "strategy": 1,
+      "kv_tokens": 3461
+    },
+    {
+      "id": 30,
+      "rank": 128,
+      "batch": 1,
+      "strategy": 3,
+      "kv_tokens": 2371
+    },
+    {
+      "id": 558,
+      "rank": 8,
+      "batch": 1,
+      "strategy": 1,
+      "kv_tokens": 2875
+    },
+    {
+      "id": 277,
+      "rank": 16,
+      "batch": 1,
+      "strategy": 1,
+      "kv_tokens": 3160
+    },
+    {
+      "id": 344,
+      "rank": 128,
+      "batch": 1,
+      "strategy": 3,
+      "kv_tokens": 3028
+    },
+    {
+      "id": 348,
+      "rank": 64,
+      "batch": 1,
+      "strategy": 4,
+      "kv_tokens": 2972
+    },
+    {
+      "id": 759,
+      "rank": 16,
+      "batch": 1,
+      "strategy": 1,
+      "kv_tokens": 2458
+    },
+    {
+      "id": 980,
+      "rank": 8,
+      "batch": 1,
+      "strategy": 1,
+      "kv_tokens": 3982
+    },
+    {
+      "id": 429,
+      "rank": 32,
+      "batch": 1,
+      "strategy": 1,
+      "kv_tokens": 4003
+    },
+    {
+      "id": 94,
+      "rank": 8,
+      "batch": 1,
+      "strategy": 1,
+      "kv_tokens": 3224
+    },
+    {
+      "id": 714,
+      "rank": 8,
+      "batch": 1,
+      "strategy": 1,
+      "kv_tokens": 2290
+    },
+    {
+      "id": 91,
+      "rank": 128,
+      "batch": 1,
+      "strategy": 3,
+      "kv_tokens": 2999
     }
   ]
 }
